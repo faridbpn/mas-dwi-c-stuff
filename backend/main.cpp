@@ -16,6 +16,7 @@ struct Book {
     std::string status;
 };
 
+// escape 1 field: bungkus kutip kalau ada koma/kutip/newline
 std::string csvEscape(const std::string& field) {
     bool needsQuoting = field.find(',') != std::string::npos ||
                         field.find('"') != std::string::npos ||
@@ -31,6 +32,7 @@ std::string csvEscape(const std::string& field) {
     return escaped;
 }
 
+// parse 1 baris CSV yang mungkin ada field ber-quote
 std::vector<std::string> parseCsvLine(const std::string& line) {
     std::vector<std::string> cells;
     std::string current;
@@ -41,7 +43,8 @@ std::vector<std::string> parseCsvLine(const std::string& line) {
         if (inQuotes) {
             if (c == '"') {
                 if (i + 1 < line.size() && line[i + 1] == '"') {
-                    current += '"';
+                    current += '"'; // "" -> "
+                    i++;
                 } else {
                     inQuotes = false;
                 }
@@ -49,7 +52,7 @@ std::vector<std::string> parseCsvLine(const std::string& line) {
                 current += c;
             }
         } else {
-            if (c = '"') {
+            if (c == '"') {
                 inQuotes = true;
             } else if (c == ',') {
                 cells.push_back(current);
@@ -59,7 +62,6 @@ std::vector<std::string> parseCsvLine(const std::string& line) {
             }
         }
     }
-
     cells.push_back(current);
     return cells;
 }
@@ -69,7 +71,11 @@ void writeBooks(const std::vector<Book>& books) {
     std::ofstream file("books.csv");
     file << "id,title,author,year,status\n";
     for (const auto& b : books) {
-        file << b.id << "," << b.title << "," << b.author << "," << b.year << "," << b.status << "\n";
+        file << b.id << ","
+             << csvEscape(b.title) << ","
+             << csvEscape(b.author) << ","
+             << b.year << ","
+             << csvEscape(b.status) << "\n";
     }
 }
 
@@ -84,19 +90,19 @@ std::vector<Book> readBooks() {
         if (isHeader) { isHeader = false; continue; }
         if (line.empty()) continue;
 
-        std::stringstream ss(line);
-        std::string cell;
-        std::vector<std::string> cells;
-        while (std::getline(ss, cell, ',')) {
-            cells.push_back(cell)                                                   ;
-        }
+        auto cells = parseCsvLine(line);
+        if (cells.size() < 4) continue; // baris rusak, skip aja daripada crash
 
         Book b;
-        b.id = std::stoi(cells[0]);
-        b.title = cells[1];
-        b.author = cells[2];
-        b.year = std::stoi(cells[3]);
-        b.status = cells.size() > 4 ? cells[4] : "mau_dibaca";
+        try {
+            b.id = std::stoi(cells[0]);
+            b.title = cells[1];
+            b.author = cells[2];
+            b.year = std::stoi(cells[3]);
+            b.status = cells.size() > 4 ? cells[4] : "mau_dibaca";
+        } catch (const std::exception&) {
+            continue; // baris korup dari format lama, skip daripada bikin server crash
+        }
         books.push_back(b);
     }
     return books;
@@ -111,22 +117,21 @@ int getNextId(const std::vector<Book>& books) {
 
 // convert 1 book to json object
 json bookToJson(const Book& b) {
-    return json{ {"id", b.id}, {"title", b.title},  {"author", b.author}, {"year", b.year}, {"status", b.status} };
+    return json{ {"id", b.id}, {"title", b.title}, {"author", b.author}, {"year", b.year}, {"status", b.status} };
 }
 
 int main() {
     httplib::Server svr;
 
     svr.set_default_headers({
-    {"Access-Control-Allow-Origin", "*"},
-    {"Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS"},
-    {"Access-Control-Allow-Headers", "Content-Type"}
-});
-svr.Options(".*", [](const httplib::Request&, httplib::Response& res) {
-    res.status = 200;
-});
+        {"Access-Control-Allow-Origin", "*"},
+        {"Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS"},
+        {"Access-Control-Allow-Headers", "Content-Type"}
+    });
+    svr.Options(".*", [](const httplib::Request&, httplib::Response& res) {
+        res.status = 200;
+    });
 
-    // GET /books -> get all book data
     svr.Get("/books", [](const httplib::Request&, httplib::Response& res) {
         auto books = readBooks();
         json arr = json::array();
@@ -134,53 +139,60 @@ svr.Options(".*", [](const httplib::Request&, httplib::Response& res) {
         res.set_content(arr.dump(), "application/json");
     });
 
-    // POST /books -> add new book
     svr.Post("/books", [](const httplib::Request& req, httplib::Response& res) {
-        json body = json::parse(req.body);
+        try {
+            json body = json::parse(req.body);
 
-        auto books = readBooks();
-        Book b;
-        b.id = getNextId(books);
-        b.title = body.value("title", "");
-        b.author = body.value("author", "");
-        b.year = body.value("year", 0);
-        b.status = body.value("status", "mau_dibaca");
+            auto books = readBooks();
+            Book b;
+            b.id = getNextId(books);
+            b.title = body.value("title", "");
+            b.author = body.value("author", "");
+            b.year = body.value("year", 0);
+            b.status = body.value("status", "mau_dibaca");
 
-        books.push_back(b);
-        writeBooks(books);
+            books.push_back(b);
+            writeBooks(books);
 
-        res.status = 201;
-        res.set_content(bookToJson(b).dump(), "application/json");
-    });
-
-    // PUT update
-    svr.Put(R"(/books/(\d+))", [](const httplib::Request& req, httplib::Response& res) {
-        int id = std::stoi(req.matches[1]);
-        auto books = readBooks();
-
-        for (auto& b : books) {
-            if (b.id == id) {
-                json body = json::parse(req.body);
-                b.title = body.value("title", b.title);
-                b.author = body.value("author", b.author);
-                b.year = body.value("year", b.year);
-                b.status = body.value("status", b.status);
-                writeBooks(books);
-                res.set_content(bookToJson(b).dump(), "application/json");
-                return;
-            }
+            res.status = 201;
+            res.set_content(bookToJson(b).dump(), "application/json");
+        } catch (const std::exception& e) {
+            res.status = 400;
+            res.set_content(R"({"error":"Data tidak valid"})", "application/json");
         }
-        res.status = 404;
-        res.set_content(R"({"error":Buku tidak ditemukan})", "application/json");
     });
 
-    // DELETE hapus buku
+    svr.Put(R"(/books/(\d+))", [](const httplib::Request& req, httplib::Response& res) {
+        try {
+            int id = std::stoi(req.matches[1]);
+            auto books = readBooks();
+
+            for (auto& b : books) {
+                if (b.id == id) {
+                    json body = json::parse(req.body);
+                    b.title = body.value("title", b.title);
+                    b.author = body.value("author", b.author);
+                    b.year = body.value("year", b.year);
+                    b.status = body.value("status", b.status);
+                    writeBooks(books);
+                    res.set_content(bookToJson(b).dump(), "application/json");
+                    return;
+                }
+            }
+            res.status = 404;
+            res.set_content(R"({"error":"Buku tidak ditemukan"})", "application/json");
+        } catch (const std::exception& e) {
+            res.status = 400;
+            res.set_content(R"({"error":"Data tidak valid"})", "application/json");
+        }
+    });
+
     svr.Delete(R"(/books/(\d+))", [](const httplib::Request& req, httplib::Response& res) {
         int id = std::stoi(req.matches[1]);
         auto books = readBooks();
 
         auto it = std::remove_if(books.begin(), books.end(),
-        [id](const Book& b) { return b.id == id; });
+            [id](const Book& b) { return b.id == id; });
         if (it == books.end()) {
             res.status = 404;
             res.set_content(R"({"error":"Buku tidak ditemukan"})", "application/json");
@@ -188,7 +200,7 @@ svr.Options(".*", [](const httplib::Request&, httplib::Response& res) {
         }
         books.erase(it, books.end());
         writeBooks(books);
-        res.set_content(R"({"message:"Buku terhapus"})", "application/json");
+        res.set_content(R"({"message":"Buku terhapus"})", "application/json");
     });
 
     std::cout << "Server jalan di http://localhost:8080\n";
