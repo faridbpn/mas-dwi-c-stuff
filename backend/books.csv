@@ -1,3 +1,4 @@
-id,title,author,year
-4,bumi,tere liye,2000
-5,inpokan,tere liyuy,200
+id,title,author,year,status
+1,bumi,farid,1,mau_dibaca
+2,bulan,farid,1,sedang_dibaca
+3,farid tampan,farid el tampan,1223,mau_dibaca

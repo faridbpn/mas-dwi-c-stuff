@@ -1,11 +1,14 @@
 <template>
   <div class="page">
+    <div class="bg-blob blob-1"></div>
+    <div class="bg-blob blob-2"></div>
+
     <header class="hero">
       <h1>Buku yang Sudah Dibaca</h1>
       <p class="subtitle">{{ books.length }} buku tercatat</p>
     </header>
 
-    <section class="card" v-liquid="{ material: 'regular', borderRadius: 28 }">
+    <section class="glass-card">
       <form @submit.prevent="submitBook" class="book-form">
         <input v-model="form.title" placeholder="Judul buku" required />
         <input v-model="form.author" placeholder="Penulis" required />
@@ -15,23 +18,19 @@
           <option value="sedang_dibaca">Sedang Dibaca</option>
           <option value="sudah_dibaca">Sudah Dibaca</option>
         </select>
-        <button type="submit" class="btn-primary" v-liquid-button>
+        <button type="submit" class="btn-primary">
           {{ editingId ? "Update Buku" : "Tambah Buku" }}
         </button>
       </form>
     </section>
 
-    <section
-      class="card table-card"
-      v-liquid="{ material: 'thick', borderRadius: 28 }"
-    >
+    <section class="glass-card table-card">
       <div class="filter-tabs">
         <button
           v-for="tab in filterTabs"
           :key="tab.value"
           class="filter-tab"
           :class="{ active: activeFilter === tab.value }"
-          v-liquid-button
           @click="activeFilter = tab.value"
         >
           {{ tab.label }}
@@ -47,14 +46,8 @@
           </span>
         </div>
         <div class="book-actions">
-          <button class="btn-ghost" v-liquid-button @click="startEdit(book)">
-            Edit
-          </button>
-          <button
-            class="btn-danger"
-            v-liquid-button
-            @click="deleteBook(book.id)"
-          >
+          <button class="btn-ghost" @click="startEdit(book)">Edit</button>
+          <button class="btn-danger" @click="deleteBook(book.id)">
             Hapus
           </button>
         </div>
@@ -69,7 +62,6 @@
 
 <script setup>
 import { ref, onMounted, computed } from "vue";
-import { LiquidGlassEngine } from "quick-liquid";
 
 const API_URL = "http://localhost:8080/books";
 
@@ -80,12 +72,12 @@ const activeFilter = ref("all");
 
 const filterTabs = [
   { label: "Semua", value: "all" },
-  { label: "Mau dibaca", value: "mau_dibaca" },
+  { label: "Mau Dibaca", value: "mau_dibaca" },
   { label: "Sedang Dibaca", value: "sedang_dibaca" },
   { label: "Sudah Dibaca", value: "sudah_dibaca" },
 ];
 
-const statusLabel = {
+const statusLabels = {
   mau_dibaca: "Mau Dibaca",
   sedang_dibaca: "Sedang Dibaca",
   sudah_dibaca: "Sudah Dibaca",
@@ -146,30 +138,6 @@ async function deleteBook(id) {
 onMounted(() => {
   loadBooks();
 });
-
-// ---------- Custom directive: panel kaca ----------
-const vLiquid = {
-  mounted(el, binding) {
-    new LiquidGlassEngine(el, {
-      material: "regular",
-      dynamicLighting: true,
-      chromaticAberration: 0, // dimatiin biar gak norak, kesan glass tetep ada dari blur
-      ...(binding.value || {}),
-    });
-  },
-};
-
-// ---------- Custom directive: tombol kaca + efek "ditekan" ----------
-const vLiquidButton = {
-  mounted(el) {
-    const glass = new LiquidGlassEngine(el, {
-      material: "clear",
-      borderRadius: 14,
-      dynamicLighting: true,
-    });
-    glass.enableLiquidPress({ scale: 0.96, squish: 0.02 });
-  },
-};
 </script>
 
 <style>
@@ -185,18 +153,47 @@ body {
 }
 
 .page {
+  position: relative;
   min-height: 100vh;
   padding: 60px 24px;
-  /* dulu: gradient orange-pink-ungu-biru rame */
-  /* sekarang: soft neutral gradient ala macOS wallpaper, biar kaca kebaca jelas */
-  background: linear-gradient(160deg, #e8e9ec 0%, #d7d9de 50%, #c9ccd3 100%);
+  background: #eef0f3;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 28px;
+  gap: 24px;
+  overflow: hidden;
+}
+
+/* blob warna lembut di belakang, biar efek kaca ada 'sesuatu' buat
+   diburamkan -- tanpa ini glass look-nya kelihatan mati/flat */
+.bg-blob {
+  position: fixed;
+  border-radius: 50%;
+  filter: blur(80px);
+  opacity: 0.35;
+  z-index: 0;
+  pointer-events: none;
+}
+
+.blob-1 {
+  width: 420px;
+  height: 420px;
+  top: -120px;
+  left: -100px;
+  background: #a7c7ff;
+}
+
+.blob-2 {
+  width: 380px;
+  height: 380px;
+  bottom: -140px;
+  right: -80px;
+  background: #ffc2d1;
 }
 
 .hero {
+  position: relative;
+  z-index: 1;
   text-align: center;
   color: #1d1d1f;
 }
@@ -214,13 +211,25 @@ body {
   font-size: 0.95rem;
 }
 
-.card {
+/* ---------- Kaca ala Apple, native CSS, tanpa JS engine ---------- */
+.glass-card {
+  position: relative;
+  z-index: 1;
   width: 100%;
   max-width: 560px;
   padding: 28px;
-  position: relative;
-  /* tetep butuh "sesuatu" biar backdrop ke-detect, tapi cuma satu rgba tipis, bukan tumpukan */
-  background: rgba(255, 255, 255, 0.001);
+  border-radius: 28px;
+  background: rgba(255, 255, 255, 0.55);
+  backdrop-filter: blur(30px) saturate(180%);
+  -webkit-backdrop-filter: blur(30px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.7);
+}
+
+.table-card {
+  background: rgba(255, 255, 255, 0.65);
 }
 
 .book-form {
@@ -229,21 +238,29 @@ body {
   gap: 12px;
 }
 
-.book-form input {
+.book-form input,
+.status-select {
   padding: 14px 16px;
   border-radius: 14px;
   border: 1px solid rgba(0, 0, 0, 0.08);
-  background: rgba(255, 255, 255, 0.6);
+  background: rgba(255, 255, 255, 0.7);
   font-size: 1rem;
   outline: none;
   color: #1d1d1f;
+  font-family: inherit;
+}
+
+.status-select {
+  appearance: none;
+  cursor: pointer;
 }
 
 .book-form input::placeholder {
   color: #86868b;
 }
 
-.book-form input:focus {
+.book-form input:focus,
+.status-select:focus {
   border-color: rgba(0, 0, 0, 0.25);
 }
 
@@ -254,12 +271,16 @@ button {
   font-weight: 600;
   padding: 12px 20px;
   border-radius: 14px;
-  color: #1d1d1f;
-  background: rgba(255, 255, 255, 0.001);
+  transition: transform 0.1s ease, opacity 0.1s ease;
+}
+
+button:active {
+  transform: scale(0.96);
+  opacity: 0.85;
 }
 
 .btn-primary {
-  background: rgba(29, 29, 31, 0.85);
+  background: rgba(29, 29, 31, 0.9);
   color: #ffffff;
 }
 
@@ -275,6 +296,27 @@ button {
   color: #d70015;
   padding: 8px 14px;
   font-size: 0.85rem;
+}
+
+.filter-tabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 18px;
+  flex-wrap: wrap;
+}
+
+.filter-tab {
+  padding: 8px 14px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.05);
+  color: #6e6e73;
+}
+
+.filter-tab.active {
+  background: rgba(29, 29, 31, 0.9);
+  color: #ffffff;
 }
 
 .book-row {
@@ -299,6 +341,30 @@ button {
   margin: 4px 0 0;
   font-size: 0.85rem;
   color: #6e6e73;
+}
+
+.status-badge {
+  display: inline-block;
+  margin-top: 6px;
+  padding: 3px 10px;
+  border-radius: 100px;
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.status-mau_dibaca {
+  background: rgba(0, 122, 255, 0.12);
+  color: #0066cc;
+}
+
+.status-sedang_dibaca {
+  background: rgba(255, 149, 0, 0.14);
+  color: #b25e00;
+}
+
+.status-sudah_dibaca {
+  background: rgba(52, 199, 89, 0.14);
+  color: #1a7a34;
 }
 
 .book-actions {

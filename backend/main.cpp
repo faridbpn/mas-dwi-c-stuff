@@ -16,6 +16,54 @@ struct Book {
     std::string status;
 };
 
+std::string csvEscape(const std::string& field) {
+    bool needsQuoting = field.find(',') != std::string::npos ||
+                        field.find('"') != std::string::npos ||
+                        field.find('\n') != std::string::npos;
+    if (!needsQuoting) return field;
+
+    std::string escaped = "\"";
+    for (char c : field) {
+        if (c == '"') escaped += "\"\""; // " jadi ""
+        else escaped += c;
+    }
+    escaped += "\"";
+    return escaped;
+}
+
+std::vector<std::string> parseCsvLine(const std::string& line) {
+    std::vector<std::string> cells;
+    std::string current;
+    bool inQuotes = false;
+
+    for (size_t i = 0; i < line.size(); i++) {
+        char c = line[i];
+        if (inQuotes) {
+            if (c == '"') {
+                if (i + 1 < line.size() && line[i + 1] == '"') {
+                    current += '"';
+                } else {
+                    inQuotes = false;
+                }
+            } else {
+                current += c;
+            }
+        } else {
+            if (c = '"') {
+                inQuotes = true;
+            } else if (c == ',') {
+                cells.push_back(current);
+                current.clear();
+            } else {
+                current += c;
+            }
+        }
+    }
+
+    cells.push_back(current);
+    return cells;
+}
+
 // write all book in csv
 void writeBooks(const std::vector<Book>& books) {
     std::ofstream file("books.csv");
