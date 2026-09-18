@@ -1,151 +1,95 @@
 import * as THREE from "three";
 
-// Konfigurasi 3 rak: mau_dibaca (kiri), sedang_dibaca (tengah), sudah_dibaca (kanan)
 export const SHELF_CONFIG = [
-  { status: "mau_dibaca",    x: -3,  label: "Mau Dibaca" },
-  { status: "sedang_dibaca", x:  0,  label: "Sedang Dibaca" },
-  { status: "sudah_dibaca",  x:  3,  label: "Sudah Dibaca" },
+  { status: "mau_dibaca", label: "Mau Dibaca", x: -3.4 },
+  { status: "sedang_dibaca", label: "Sedang Dibaca", x: 0 },
+  { status: "sudah_dibaca", label: "Sudah Dibaca", x: 3.4 },
 ];
 
-const SHELF_W = 2.6;   // lebar rak
-const SHELF_D = 0.8;   // kedalaman rak
-const PLANK_H = 0.06;  // tebal papan
-const SIDE_T  = 0.06;  // tebal sisi kiri/kanan
-const SHELF_Y = 0.0;   // posisi lantai rak
+const SHELF_WIDTH = 2.8;
+const SHELF_DEPTH = 0.9;
+const SHELF_HEIGHT = 1.4;
+const WOOD_COLOR = 0x8a5a3b;
 
-const WOOD_COLOR  = 0x8b6f47;  // coklat kayu
-const WOOD_DARK   = 0x6b5237;
-
-/**
- * Buat satu unit rak (Group) yang terdiri dari:
- * - papan atas dan bawah
- * - dua sisi kiri & kanan
- * - papan belakang
- * - label teks 2D di atas rak
- */
-export function createShelfMesh(cfg) {
+export function createShelfMesh(config) {
   const group = new THREE.Group();
-  group.position.set(cfg.x, SHELF_Y, 0);
-  group.userData.status = cfg.status;
+  const woodMaterial = new THREE.MeshStandardMaterial({ color: WOOD_COLOR });
 
-  const matLight = new THREE.MeshStandardMaterial({ color: WOOD_COLOR });
-  const matDark  = new THREE.MeshStandardMaterial({ color: WOOD_DARK });
-
-  // papan bawah (lantai rak)
-  const bottomPlank = new THREE.Mesh(
-    new THREE.BoxGeometry(SHELF_W, PLANK_H, SHELF_D),
-    matLight
+  const back = new THREE.Mesh(
+    new THREE.BoxGeometry(SHELF_WIDTH, SHELF_HEIGHT, 0.05),
+    woodMaterial
   );
-  bottomPlank.position.set(0, PLANK_H / 2, 0);
-  group.add(bottomPlank);
+  back.position.set(0, SHELF_HEIGHT / 2, -SHELF_DEPTH / 2);
 
-  // papan atas
-  const topPlank = new THREE.Mesh(
-    new THREE.BoxGeometry(SHELF_W, PLANK_H, SHELF_D),
-    matLight
+  const bottom = new THREE.Mesh(
+    new THREE.BoxGeometry(SHELF_WIDTH, 0.06, SHELF_DEPTH),
+    woodMaterial
   );
-  topPlank.position.set(0, 1.2, 0);
-  group.add(topPlank);
 
-  // sisi kiri
-  const leftSide = new THREE.Mesh(
-    new THREE.BoxGeometry(SIDE_T, 1.2, SHELF_D),
-    matDark
+  const left = new THREE.Mesh(
+    new THREE.BoxGeometry(0.06, SHELF_HEIGHT, SHELF_DEPTH),
+    woodMaterial
   );
-  leftSide.position.set(-(SHELF_W / 2) + SIDE_T / 2, 0.6, 0);
-  group.add(leftSide);
+  left.position.set(-SHELF_WIDTH / 2, SHELF_HEIGHT / 2, 0);
 
-  // sisi kanan
-  const rightSide = new THREE.Mesh(
-    new THREE.BoxGeometry(SIDE_T, 1.2, SHELF_D),
-    matDark
+  const right = left.clone();
+  right.position.x = SHELF_WIDTH / 2;
+
+  // ---- BARU: plat lampu penanda drop-target, defaultnya nyala ----
+  const highlight = new THREE.Mesh(
+    new THREE.BoxGeometry(SHELF_WIDTH + 0.15, 0.04, SHELF_DEPTH + 0.15),
+    new THREE.MeshBasicMaterial({
+      color: 0x0a84ff,
+      transparent: true,
+      opacity: 0.4,
+    })
   );
-  rightSide.position.set((SHELF_W / 2) - SIDE_T / 2, 0.6, 0);
-  group.add(rightSide);
+  highlight.position.set(0, 0.03, 0);
+  highlight.visible = false; // cuma nyala pas ada buku diseret ke arahnya
 
-  // papan belakang (tipis)
-  const backPanel = new THREE.Mesh(
-    new THREE.BoxGeometry(SHELF_W, 1.2, 0.04),
-    matDark
-  );
-  backPanel.position.set(0, 0.6, -(SHELF_D / 2) + 0.02);
-  group.add(backPanel);
-
-  // label teks di atas rak (pakai canvas texture)
-  const labelMesh = createLabelMesh(cfg.label);
-  labelMesh.position.set(0, 1.45, 0);
-  group.add(labelMesh);
-
+  group.add(back, bottom, left, right, highlight);
+  group.position.set(config.x, 0, 0);
+  group.userData.status = config.status;
+  group.userData.label = config.label;
+  group.userData.highlightMesh = highlight;
   return group;
 }
 
-/** Buat sprite teks 2D (canvas texture) sebagai label rak */
-function createLabelMesh(text) {
-  const canvas = document.createElement("canvas");
-  canvas.width = 512;
-  canvas.height = 128;
-  const ctx = canvas.getContext("2d");
-
-  ctx.fillStyle = "rgba(0,0,0,0)";
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-  ctx.fillStyle = "#1d1d1f";
-  ctx.font = "bold 52px sans-serif";
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillText(text, canvas.width / 2, canvas.height / 2);
-
-  const texture = new THREE.CanvasTexture(canvas);
-  const mat = new THREE.MeshBasicMaterial({
-    map: texture,
-    transparent: true,
-    depthWrite: false,
-  });
-  const geo = new THREE.PlaneGeometry(2.4, 0.35);
-  return new THREE.Mesh(geo, mat);
-}
-
-/**
- * Buat grup tempat sampah sederhana (silinder + tutup)
- * yang diletakkan di pojok kanan depan.
- */
 export function createTrashMesh() {
   const group = new THREE.Group();
-  group.position.set(5.5, 0, 1.5);
-
-  const matBin = new THREE.MeshStandardMaterial({ color: 0x555555 });
-  const matLid = new THREE.MeshStandardMaterial({ color: 0x333333 });
-
-  // badan tempat sampah (silinder terbuka atas)
+  const bodyMaterial = new THREE.MeshStandardMaterial({ color: 0x3a3a3c });
   const body = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.35, 0.28, 0.8, 16, 1, true),
-    matBin
+    new THREE.CylinderGeometry(0.35, 0.28, 0.6, 16),
+    bodyMaterial
   );
-  body.position.y = 0.4;
+  body.position.y = 0.3;
   group.add(body);
+  group.position.set(5.4, 0, 0.3);
+  group.userData.isTrash = true;
 
-  // alas bawah
-  const bottom = new THREE.Mesh(
-    new THREE.CircleGeometry(0.28, 16),
-    matBin
+  // ---- BARU: simpan referensi buat animasi hover ----
+  group.userData.body = body;
+  group.userData.baseColor = 0x3a3a3c;
+  group.userData.hoverColor = 0xff3b30;
+  return group;
+}
+
+export function createDashboardBoardMesh() {
+  const group = new THREE.Group();
+  const frame = new THREE.Mesh(
+    new THREE.BoxGeometry(1.8, 1.6, 0.08),
+    new THREE.MeshStandardMaterial({ color: 0x6b4a33 })
   );
-  bottom.rotation.x = -Math.PI / 2;
-  bottom.position.y = 0.01;
-  group.add(bottom);
-
-  // tutup/lid
-  const lid = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.37, 0.37, 0.06, 16),
-    matLid
+  const board = new THREE.Mesh(
+    new THREE.BoxGeometry(1.6, 1.4, 0.05),
+    new THREE.MeshStandardMaterial({ color: 0xdccdb0 })
   );
-  lid.position.y = 0.83;
-  group.add(lid);
+  board.position.z = 0.02;
 
-  // ikon teks "🗑" di depan (opsional, pakai label)
-  const label = createLabelMesh("🗑 Hapus");
-  label.position.set(0, 1.2, 0);
-  label.scale.set(0.6, 0.6, 0.6);
-  group.add(label);
-
+  group.add(frame, board);
+  // diposisikan di dinding SEBERANG rak (rak ada di z=0), jadi user perlu
+  // muter kamera (OrbitControls 360) buat liat papan ini -- "menghadap arah lain"
+  group.position.set(5.6, 1.3, 2.8);
+  group.rotation.y = Math.PI / 2;
   return group;
 }
