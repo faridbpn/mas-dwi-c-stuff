@@ -27,5 +27,6 @@ export async function updateBook(id, payload) {
 }
 
 export async function deleteBook(id) {
-    const res = await fetch(``)
+    const res = await fetch(`${API_URL}/${id}`, { method: "DELETE" });
+    if (!res.ok) throw new Error("Gagal menghapus buku");
 }
