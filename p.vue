@@ -1,73 +1,60 @@
-import * as THREE from "three";
+<template>
+  <div ref="containerRef" class="scene-container">
+    <div v-for="label in visibleEmptyLabels" :key="label.status" class="shelf-empty-label" :style="{ left: label.x + 'px', top: label.y + 'px' }">
+      <span class="bounce-arrow">👇</span>
+      <p v-if="isFiltering">Gak ada hasil di rak "{{ label.label }}"</p>
+      <p v-else>Rak "{{ label.label }}" masih kosong,<br />yuk drag buku ke sini 👋</p>
+    </div>
 
-const STATUS_COLOR = {
-  mau_dibaca: 0x5b8def,
-  sedang_dibaca: 0xf0a544,
-  sudah_dibaca: 0x4caf6e,
-};
+    <DashboardBoard
+      v-if="boardAnchor.inFront"
+      :books="allBooks"
+      class="dashboard-anchor"
+      :style="{ left: boardAnchor.x + 'px', top: boardAnchor.y + 'px' }"
+    />
+  </div>
+</template>
 
-function createSpineTexture(title, author) {
-  const canvas = document.createElement("canvas");
-  canvas.width = 128;
-  canvas.height = 512;
-  const ctx = canvas.getContext("2d");
+<script setup>
+import { ref, computed, onMounted, onBeforeUnmount, watch } from "vue";
+import { useLibraryScene } from "../three/useLibraryScene";
+import DashboardBoard from "./DashboardBoard.vue";
 
-  ctx.fillStyle = "#f7f3ea";
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
+const props = defineProps({
+  books: { type: Array, required: true },       // sudah kefilter search/genre, dipake buat rak
+  allBooks: { type: Array, required: true },     // TANPA filter, dipake buat statistik dashboard
+  isFiltering: { type: Boolean, default: false },
+});
+const emit = defineEmits(["edit-book", "move-book", "request-delete"]);
 
-  // teks diputar 90 derajat biar kayak tulisan di punggung buku asli
-  ctx.save();
-  ctx.translate(canvas.width / 2, canvas.height / 2);
-  ctx.rotate(-Math.PI / 2);
-  ctx.fillStyle = "#1d1d1f";
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.font = "bold 34px sans-serif";
-  ctx.fillText(title.slice(0, 26), 0, -8);
-  ctx.font = "22px sans-serif";
-  ctx.fillStyle = "#6e6e73";
-  ctx.fillText(author.slice(0, 30), 0, 26);
-  ctx.restore();
+const containerRef = ref(null);
+const shelfLabels = ref([]);
+const boardAnchor = ref({ x: 0, y: 0, inFront: false });
+let scene;
 
-  const texture = new THREE.CanvasTexture(canvas);
-  texture.needsUpdate = true;
-  return texture;
-}
+const visibleEmptyLabels = computed(() => shelfLabels.value.filter((l) => l.count === 0));
 
-// urutan material BoxGeometry: [+x, -x, +y, -y, +z, -z]
-// +z kita jadiin sisi depan (spine yang keliatan dari kamera)
-export function createBookMesh(book) {
-  const width = 0.18;
-  const height = 1;
-  const depth = 0.7;
-
-  const color = STATUS_COLOR[book.status] ?? 0x999999;
-  const sideMaterial = new THREE.MeshStandardMaterial({ color });
-  const spineMaterial = new THREE.MeshStandardMaterial({
-    map: createSpineTexture(book.title, book.author),
+onMounted(() => {
+  scene = useLibraryScene({
+    onEditBook: (id) => emit("edit-book", id),
+    onMoveBook: (id, status) => emit("move-book", { id, status }),
+    onRequestDelete: (id) => emit("request-delete", id),
+    onShelfLabelsUpdate: (positions) => { shelfLabels.value = positions; },
+    onBoardAnchorUpdate: (anchor) => { boardAnchor.value = anchor; },
   });
+  scene.init(containerRef.value);
+  scene.layoutBooks(props.books);
+});
 
-  const materials = [
-    sideMaterial, // +x
-    sideMaterial, // -x
-    sideMaterial, // +y (atas)
-    sideMaterial, // -y (bawah)
-    spineMaterial, // +z (depan, keliatan tulisan judul)
-    sideMaterial, // -z
-  ];
+watch(() => props.books, (b) => scene?.layoutBooks(b), { deep: true });
+onBeforeUnmount(() => scene?.destroy());
+defineExpose({ refreshLayout: () => scene?.layoutBooks(props.books) });
+</script>
 
-  const geometry = new THREE.BoxGeometry(width, height, depth);
-  const mesh = new THREE.Mesh(geometry, materials);
-  mesh.userData.bookId = book.id;
-  mesh.userData.status = book.status;
-  mesh.castShadow = true;
-  return mesh;
-}
-
-export function disposeBookMesh(mesh) {
-  mesh.geometry.dispose();
-  mesh.material.forEach((m) => {
-    m.map?.dispose();
-    m.dispose();
-  });
-}
+<style scoped>
+.scene-container { position: relative; width: 100%; height: 100vh; }
+.shelf-empty-label { position: absolute; transform: translate(-50%, -100%); text-align: center; pointer-events: none; color: #6e6e73; font-size: 0.8rem; line-height: 1.4; }
+.bounce-arrow { display: inline-block; font-size: 1.4rem; animation: bounce 1.2s ease-in-out infinite; }
+@keyframes bounce { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(6px); } }
+.dashboard-anchor { position: absolute; transform: translate(-50%, -50%); pointer-events: auto; }
+</style>
