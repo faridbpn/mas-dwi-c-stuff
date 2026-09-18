@@ -6,7 +6,7 @@ const STATUS_COLOR = {
   sudah_dibaca: 0x4caf6e,
 };
 
-function createSpineTexture(title, author) {
+function createSplineTexture(title, author) {
   const canvas = document.createElement("canvas");
   canvas.width = 128;
   canvas.height = 512;
@@ -15,7 +15,7 @@ function createSpineTexture(title, author) {
   ctx.fillStyle = "#f7f3ea";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-  // teks diputar 90 derajat biar kayak tulisan di punggung buku asli
+  // text diputar biar kayak tulisan punggung
   ctx.save();
   ctx.translate(canvas.width / 2, canvas.height / 2);
   ctx.rotate(-Math.PI / 2);
@@ -44,7 +44,7 @@ export function createBookMesh(book) {
   const color = STATUS_COLOR[book.status] ?? 0x999999;
   const sideMaterial = new THREE.MeshStandardMaterial({ color });
   const spineMaterial = new THREE.MeshStandardMaterial({
-    map: createSpineTexture(book.title, book.author),
+    map: createSplineTexture(book.title, book.author),
   });
 
   const materials = [
