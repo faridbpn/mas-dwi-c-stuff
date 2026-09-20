@@ -79,6 +79,10 @@ export function createBookMesh(book) {
   mesh.userData.status = book.status;
   mesh.castShadow = true;
 
+   // BARU: fase & kecepatan acak, biar goyangnya gak seragam/robotik
+  mesh.userData.idleSeed = Math.random() * Math.PI * 2;
+  mesh.userData.idleSpeed = 0.8 + Math.random() * 0.6;
+
   loadCoverInto(mesh, book); // async, gak nge-block render pertama
   return mesh;
 }

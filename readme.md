@@ -93,6 +93,13 @@ Buka URL yang muncul di terminal (biasanya `http://localhost:5173`).
 - [ ] **Database upgrade** — migrasi dari CSV ke SQLite kalau data mulai besar
 - [ ] **AI Assistant Integration** — command berbasis teks/suara untuk operasi CRUD
 
+## 📝 next update plan
+kasih background
+kasih musik latar yang bisa dipilih2
+add idle animation dll
+
+
+
 ## 📝 Lisensi
 
 Bebas digunakan dan dikembangkan untuk keperluan belajar maupun portofolio pribadi.

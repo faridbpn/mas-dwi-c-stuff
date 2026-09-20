@@ -1,12 +1,14 @@
-import { loadDecorModel } from "./decorFactory";
+export function createBookMesh(book) {
+  const geometry = new THREE.BoxGeometry(0.18, 1, 0.7);
+  const mesh = new THREE.Mesh(geometry, buildMaterials(book, null));
+  mesh.userData.bookId = book.id;
+  mesh.userData.status = book.status;
+  mesh.castShadow = true;
 
-// ...di dalam init(), setelah `scene.add(dashboardBoard);`
+  // BARU: fase & kecepatan acak, biar goyangnya gak seragam/robotik
+  mesh.userData.idleSeed = Math.random() * Math.PI * 2;
+  mesh.userData.idleSpeed = 0.8 + Math.random() * 0.6;
 
-loadDecorModel({
-  url: "/models/dekorasi.glb",   // <- ganti sesuai nama file lo
-  targetHeight: 1.6,             // tinggi target dalam unit scene (rak lo tingginya 1.4, jadi ini kira-kira segitu)
-  position: [5.6, 0, 5.4],       // lebih jauh lagi di ujung "lorong" belokan, past papan
-  rotationY: Math.PI / 4,        // muter dikit biar gak ngadep lurus2 amat, keliatan lebih natural
-})
-  .then((model) => scene.add(model))
-  .catch((err) => console.warn("Model dekorasi gagal dimuat:", err));
+  loadCoverInto(mesh, book);
+  return mesh;
+}

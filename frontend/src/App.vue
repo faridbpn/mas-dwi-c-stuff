@@ -31,9 +31,15 @@
       <p>Menyusun rak buku...</p>
     </div>
   </Transition>
+
+   <button class="music-toggle" @click="toggleMute" :title="isMuted ? 'Nyalain musik' : 'Matiin musik'">
+    {{ isMuted ? "🔇" : "🎵" }}
+  </button>
 </template>
 
 <script setup>
+import { useBackgroundMusic } from "./composables/useBackgroundMusic";
+const { isMuted, toggleMute } = useBackgroundMusic("/music/bgm.mp3", { volume: 0.3 });
 import { ref, computed, onMounted } from "vue";
 import LibraryScene from "./components/LibraryScene.vue";
 import BookFormModal from "./components/BookFormModal.vue";
@@ -128,4 +134,20 @@ body { margin: 0; overflow: hidden; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .fade-enter-active, .fade-leave-active { transition: opacity 0.3s ease; }
 .fade-enter-from, .fade-leave-to { opacity: 0; }
+
+.music-toggle {
+  position: fixed;
+  top: 20px;
+  right: 24px;
+  z-index: 15;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255,255,255,0.85);
+  backdrop-filter: blur(10px);
+  font-size: 1.2rem;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.12);
+}
 </style>
