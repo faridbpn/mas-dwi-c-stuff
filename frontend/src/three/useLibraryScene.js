@@ -8,12 +8,19 @@ import {
   createTrashMesh,
 } from "./shelfFactory";
 import { loadDecorModel } from "./decorFactory";
+import {
+  createTerrain,
+  createSky,
+  createMountains,
+  setupOutdoorLighting,
+} from "./enviroment"; // <- FIX: cek ini sesuai nama file asli lo
 
 export function useLibraryScene({
   onMoveBook,
-  onRequestDelete, // <- ganti nama dari onDeleteBook: sekarang cuma "minta" hapus, bukan hapus langsung
+  onRequestDelete,
   onEditBook,
-  onShelfLabelsUpdate, // <- BARU: dipanggil tiap beberapa frame, buat label "rak kosong"
+  onShelfLabelsUpdate,
+  onBoardAnchorUpdate, // <- FIX: ditambahin, sebelumnya ketinggalan
 }) {
   let renderer, scene, camera, controls, raycaster, pointer;
   let animationId = null;
@@ -23,13 +30,16 @@ export function useLibraryScene({
   const bookMeshes = new Map();
   const shelfGroups = [];
   let trashGroup = null;
-  const shelfCounts = {}; // status -> jumlah buku, dipakai buat tau rak kosong atau enggak
+  const shelfCounts = {};
 
   let draggingMesh = null;
+  let lastInteractionAt = performance.now();
+  const IDLE_THRESHOLD_MS = 15000; // <- balikin ke 15 detik (atau sesuai selera lo)
   let dragPlane = null;
   let pointerDownPos = { x: 0, y: 0 };
   const shards = [];
   let frameCount = 0;
+  const clock = new THREE.Clock(); // <- FIX: cukup 1 kali, ditaruh di sini biar rapi
 
   function init(el) {
     container = el;
@@ -40,7 +50,7 @@ export function useLibraryScene({
       50,
       container.clientWidth / container.clientHeight,
       0.1,
-      100,
+      500
     );
     camera.position.set(0, 3.2, 7);
 
@@ -54,17 +64,11 @@ export function useLibraryScene({
     controls.enableDamping = true;
     controls.maxPolarAngle = Math.PI / 2.05;
 
-    scene.add(new THREE.AmbientLight(0xffffff, 0.6));
-    const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
-    dirLight.position.set(4, 6, 4);
-    scene.add(dirLight);
-
-    const floor = new THREE.Mesh(
-      new THREE.PlaneGeometry(20, 20),
-      new THREE.MeshStandardMaterial({ color: 0xd8d3c8 }),
-    );
-    floor.rotation.x = -Math.PI / 2;
-    scene.add(floor);
+    scene.add(createSky());
+    scene.fog = new THREE.Fog(0xbcdcff, 30, 140);
+    setupOutdoorLighting(scene, renderer);
+    scene.add(createTerrain());
+    scene.add(createMountains());
 
     SHELF_CONFIG.forEach((cfg) => {
       const shelf = createShelfMesh(cfg);
@@ -78,12 +82,13 @@ export function useLibraryScene({
 
     dashboardBoard = createDashboardBoardMesh();
     scene.add(dashboardBoard);
+    dashboardBoard.userData.baseY = dashboardBoard.position.y;
 
     loadDecorModel({
-      url: "/models/bronze_shark_statue_1k.gltf", // <- tambah extension .gltf
-      targetHeight: 1.6, // tinggi target dalam unit scene (rak lo tingginya 1.4, jadi ini kira-kira segitu)
-      position: [5.6, 0, 5.4], // lebih jauh lagi di ujung "lorong" belokan, past papan
-      rotationY: -Math.PI / 2, // muter dikit biar gak ngadep lurus2 amat, keliatan lebih natural
+      url: "/models/bronze_shark_statue_1k.gltf",
+      targetHeight: 1.6,
+      position: [5.6, 0, 5.4],
+      rotationY: -Math.PI / 2,
     })
       .then((model) => scene.add(model))
       .catch((err) => console.warn("Model dekorasi gagal dimuat:", err));
@@ -92,6 +97,9 @@ export function useLibraryScene({
     raycaster = new THREE.Raycaster();
     pointer = new THREE.Vector2();
 
+    renderer.domElement.addEventListener("wheel", () => {
+      lastInteractionAt = performance.now();
+    });
     renderer.domElement.addEventListener("pointerdown", onPointerDown);
     renderer.domElement.addEventListener("pointermove", onPointerMove);
     renderer.domElement.addEventListener("pointerup", onPointerUp);
@@ -113,16 +121,16 @@ export function useLibraryScene({
     return hits.length ? hits[0].object : null;
   }
 
-  // ---- BARU: matiin semua highlight rak + balikin tempat sampah ke normal ----
   function clearDragFeedback() {
     shelfGroups.forEach((s) => (s.userData.highlightMesh.visible = false));
     trashGroup.scale.setScalar(1);
     trashGroup.userData.body.material.color.set(trashGroup.userData.baseColor);
   }
 
+  // FIX: cuma SATU versi projectToScreen, yang ada `inFront`-nya
   function projectToScreen(object3D, yOffset = 1.6) {
     const worldPos = new THREE.Vector3(0, yOffset, 0).applyMatrix4(
-      object3D.matrixWorld,
+      object3D.matrixWorld
     );
     const viewPos = worldPos.clone().applyMatrix4(camera.matrixWorldInverse);
     const inFront = viewPos.z < 0;
@@ -137,11 +145,21 @@ export function useLibraryScene({
     };
   }
 
+  // FIX: cuma SATU versi animate, gabungan idle motion + auto-orbit + label update
   function animate() {
     animationId = requestAnimationFrame(animate);
+
     const delta = clock.getDelta();
+    const elapsed = clock.getElapsedTime();
+
     updateShards(delta);
+    updateIdleMotion(elapsed);
+
+    const idleFor = performance.now() - lastInteractionAt;
+    controls.autoRotate = idleFor > IDLE_THRESHOLD_MS && !draggingMesh;
+    controls.autoRotateSpeed = 0.4;
     controls.update();
+
     renderer.render(scene, camera);
 
     frameCount++;
@@ -158,13 +176,34 @@ export function useLibraryScene({
         });
         onShelfLabelsUpdate(positions);
       }
+
       if (onBoardAnchorUpdate) {
         onBoardAnchorUpdate(projectToScreen(dashboardBoard, 0));
       }
     }
   }
 
+  function updateIdleMotion(elapsed) {
+    bookMeshes.forEach((mesh) => {
+      if (mesh === draggingMesh) return;
+      const { idleSeed, idleSpeed } = mesh.userData;
+      mesh.rotation.z = Math.sin(elapsed * idleSpeed + idleSeed) * 0.025;
+      mesh.position.y =
+        0.5 + Math.sin(elapsed * idleSpeed * 0.7 + idleSeed) * 0.01;
+    });
+
+    if (dashboardBoard) {
+      dashboardBoard.position.y =
+        dashboardBoard.userData.baseY + Math.sin(elapsed * 0.5) * 0.03;
+    }
+
+    if (trashGroup) {
+      trashGroup.rotation.y = Math.sin(elapsed * 0.4) * 0.05;
+    }
+  }
+
   function onPointerDown(event) {
+    lastInteractionAt = performance.now();
     updatePointer(event);
     pointerDownPos = { x: event.clientX, y: event.clientY };
     const hit = getIntersectedBook();
@@ -175,6 +214,7 @@ export function useLibraryScene({
   }
 
   function onPointerMove(event) {
+    lastInteractionAt = performance.now();
     updatePointer(event);
 
     if (draggingMesh) {
@@ -187,7 +227,6 @@ export function useLibraryScene({
         draggingMesh.position.y = 0.55;
       }
 
-      // ---- BARU: nyalain highlight rak yang lagi jadi target ----
       shelfGroups.forEach((s) => {
         const isNear =
           Math.abs(draggingMesh.position.x - s.position.x) < 1.3 &&
@@ -195,17 +234,16 @@ export function useLibraryScene({
         s.userData.highlightMesh.visible = isNear;
       });
 
-      // ---- BARU: tempat sampah membesar & memerah pas didekatin ----
       const distToTrash = draggingMesh.position.distanceTo(trashGroup.position);
       const isNearTrash = distToTrash < 1.4;
       const targetScale = isNearTrash ? 1.35 : 1;
       trashGroup.scale.setScalar(
-        THREE.MathUtils.lerp(trashGroup.scale.x, targetScale, 0.25),
+        THREE.MathUtils.lerp(trashGroup.scale.x, targetScale, 0.25)
       );
       trashGroup.userData.body.material.color.set(
         isNearTrash
           ? trashGroup.userData.hoverColor
-          : trashGroup.userData.baseColor,
+          : trashGroup.userData.baseColor
       );
       return;
     }
@@ -218,11 +256,11 @@ export function useLibraryScene({
     controls.enabled = true;
     if (!draggingMesh) return;
 
-    clearDragFeedback(); // matiin semua highlight begitu drop terjadi
+    clearDragFeedback();
 
     const movedDistance = Math.hypot(
       event.clientX - pointerDownPos.x,
-      event.clientY - pointerDownPos.y,
+      event.clientY - pointerDownPos.y
     );
     const mesh = draggingMesh;
     draggingMesh = null;
@@ -235,15 +273,13 @@ export function useLibraryScene({
 
     const distToTrash = mesh.position.distanceTo(trashGroup.position);
     if (distToTrash < 1) {
-      // ---- Ubahan penting: shatter dulu, TAPI hapus beneran diserahin ke luar (App.vue)
-      // biar ada jeda buat toast Undo, bukan langsung DELETE ke server
       shatterBook(mesh);
       onRequestDelete(mesh.userData.bookId);
       return;
     }
 
     const targetShelf = shelfGroups.find(
-      (s) => Math.abs(mesh.position.x - s.position.x) < 1.3,
+      (s) => Math.abs(mesh.position.x - s.position.x) < 1.3
     );
     if (targetShelf && targetShelf.userData.status !== mesh.userData.status) {
       onMoveBook(mesh.userData.bookId, targetShelf.userData.status);
@@ -260,13 +296,13 @@ export function useLibraryScene({
     for (let i = 0; i < 10; i++) {
       const shard = new THREE.Mesh(
         new THREE.BoxGeometry(0.08, 0.08, 0.08),
-        new THREE.MeshStandardMaterial({ color: 0xcfcfd4 }),
+        new THREE.MeshStandardMaterial({ color: 0xcfcfd4 })
       );
       shard.position.copy(origin);
       shard.userData.velocity = new THREE.Vector3(
         (Math.random() - 0.5) * 3,
         Math.random() * 2 + 1,
-        (Math.random() - 0.5) * 3,
+        (Math.random() - 0.5) * 3
       );
       shard.userData.life = 0.9;
       scene.add(shard);
@@ -303,7 +339,7 @@ export function useLibraryScene({
 
     SHELF_CONFIG.forEach((cfg) => {
       const shelfBooks = books.filter((b) => b.status === cfg.status);
-      shelfCounts[cfg.status] = shelfBooks.length; // dipakai buat cek rak kosong
+      shelfCounts[cfg.status] = shelfBooks.length;
 
       const spacing = 0.24;
       const startX = cfg.x - ((shelfBooks.length - 1) * spacing) / 2;
@@ -321,46 +357,11 @@ export function useLibraryScene({
     });
   }
 
-  // ---- BARU: hitung posisi layar (px) tiap rak, buat nempelin label HTML "rak kosong" ----
-  function projectToScreen(object3D, yOffset = 1.6) {
-    const vector = new THREE.Vector3(0, yOffset, 0);
-    vector.applyMatrix4(object3D.matrixWorld);
-    vector.project(camera);
-    const halfW = container.clientWidth / 2;
-    const halfH = container.clientHeight / 2;
-    return { x: vector.x * halfW + halfW, y: -vector.y * halfH + halfH };
-  }
-
   function onResize() {
     if (!container) return;
     camera.aspect = container.clientWidth / container.clientHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(container.clientWidth, container.clientHeight);
-  }
-
-  const clock = new THREE.Clock();
-  function animate() {
-    animationId = requestAnimationFrame(animate);
-    const delta = clock.getDelta();
-    updateShards(delta);
-    controls.update();
-    renderer.render(scene, camera);
-
-    // throttle: update posisi label tiap 3 frame aja (~20x/detik), gak perlu tiap frame
-    frameCount++;
-    if (frameCount % 3 === 0 && onShelfLabelsUpdate) {
-      const positions = shelfGroups.map((s) => {
-        const screen = projectToScreen(s);
-        return {
-          status: s.userData.status,
-          label: s.userData.label,
-          count: shelfCounts[s.userData.status] ?? 0,
-          x: screen.x,
-          y: screen.y,
-        };
-      });
-      onShelfLabelsUpdate(positions);
-    }
   }
 
   function destroy() {

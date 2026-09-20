@@ -17,18 +17,18 @@ export function createShelfMesh(config) {
 
   const back = new THREE.Mesh(
     new THREE.BoxGeometry(SHELF_WIDTH, SHELF_HEIGHT, 0.05),
-    woodMaterial
+    woodMaterial,
   );
   back.position.set(0, SHELF_HEIGHT / 2, -SHELF_DEPTH / 2);
 
   const bottom = new THREE.Mesh(
     new THREE.BoxGeometry(SHELF_WIDTH, 0.06, SHELF_DEPTH),
-    woodMaterial
+    woodMaterial,
   );
 
   const left = new THREE.Mesh(
     new THREE.BoxGeometry(0.06, SHELF_HEIGHT, SHELF_DEPTH),
-    woodMaterial
+    woodMaterial,
   );
   left.position.set(-SHELF_WIDTH / 2, SHELF_HEIGHT / 2, 0);
 
@@ -42,7 +42,7 @@ export function createShelfMesh(config) {
       color: 0x0a84ff,
       transparent: true,
       opacity: 0.4,
-    })
+    }),
   );
   highlight.position.set(0, 0.03, 0);
   highlight.visible = false; // cuma nyala pas ada buku diseret ke arahnya
@@ -52,6 +52,14 @@ export function createShelfMesh(config) {
   group.userData.status = config.status;
   group.userData.label = config.label;
   group.userData.highlightMesh = highlight;
+
+  group.traverse((child) => {
+    if (child.isMesh) {
+      child.castShadow = true;
+      child.receiveShadow = true;
+    }
+  });
+
   return group;
 }
 
@@ -60,7 +68,7 @@ export function createTrashMesh() {
   const bodyMaterial = new THREE.MeshStandardMaterial({ color: 0x3a3a3c });
   const body = new THREE.Mesh(
     new THREE.CylinderGeometry(0.35, 0.28, 0.6, 16),
-    bodyMaterial
+    bodyMaterial,
   );
   body.position.y = 0.3;
   group.add(body);
@@ -78,11 +86,11 @@ export function createDashboardBoardMesh() {
   const group = new THREE.Group();
   const frame = new THREE.Mesh(
     new THREE.BoxGeometry(1.8, 1.6, 0.08),
-    new THREE.MeshStandardMaterial({ color: 0x6b4a33 })
+    new THREE.MeshStandardMaterial({ color: 0x6b4a33 }),
   );
   const board = new THREE.Mesh(
     new THREE.BoxGeometry(1.6, 1.4, 0.05),
-    new THREE.MeshStandardMaterial({ color: 0xdccdb0 })
+    new THREE.MeshStandardMaterial({ color: 0xdccdb0 }),
   );
   board.position.z = 0.02;
 
@@ -91,5 +99,13 @@ export function createDashboardBoardMesh() {
   // muter kamera (OrbitControls 360) buat liat papan ini -- "menghadap arah lain"
   group.position.set(5.6, 1.3, 2.8);
   group.rotation.y = Math.PI / 2;
+
+  group.traverse((child) => {
+    if (child.isMesh) {
+      child.castShadow = true;
+      child.receiveShadow = true;
+    }
+  });
+  
   return group;
 }
