@@ -2,7 +2,11 @@ import * as THREE from "three";
 
 function createBirdMesh() {
   const group = new THREE.Group();
-  const material = new THREE.MeshBasicMaterial({ color: 0x3a3a3c, side: THREE.DoubleSide });
+  group.scale.set(2, 2, 2); // scale up 2x biar lebih visible
+  const material = new THREE.MeshBasicMaterial({
+    color: 0x3a3a3c,
+    side: THREE.DoubleSide,
+  });
 
   function makeWing(sign) {
     const shape = new THREE.Shape();
@@ -23,7 +27,7 @@ function createBirdMesh() {
   return group;
 }
 
-export function createBirdFlock(count = 6) {
+export function createBirdFlock(count = 12) {
   const group = new THREE.Group();
   const birds = [];
 
@@ -41,11 +45,11 @@ export function createBirdFlock(count = 6) {
         new THREE.Vector3(
           Math.cos(angle) * radius + (Math.random() - 0.5) * 8,
           height + Math.sin(angle * 2) * 3,
-          Math.sin(angle) * radius + (Math.random() - 0.5) * 8
-        )
+          Math.sin(angle) * radius + (Math.random() - 0.5) * 8,
+        ),
       );
     }
-    const curve = new THREE.CatmullRomCurve3(points, true); // true = loop tertutup
+    const curve = new THREE.CatmullRomCurve3(points, true);
 
     birds.push({
       mesh,
@@ -56,7 +60,7 @@ export function createBirdFlock(count = 6) {
     });
   }
 
-  group.visible = false; // default mati, dinyalain sistem day-night pas siang
+  group.visible = true; // set visible langsung, jangan false
 
   function update(elapsed) {
     birds.forEach((b) => {
@@ -65,7 +69,7 @@ export function createBirdFlock(count = 6) {
       const tangent = b.curve.getTangentAt(t);
 
       b.mesh.position.copy(pos);
-      b.mesh.lookAt(pos.clone().add(tangent)); // ngadep ke arah gerak
+      b.mesh.lookAt(pos.clone().add(tangent));
 
       const flap = Math.sin(elapsed * 12 + b.flapSeed) * 0.6;
       b.mesh.userData.wings[0].rotation.z = flap;

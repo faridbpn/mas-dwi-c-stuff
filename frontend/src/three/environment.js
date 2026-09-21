@@ -36,7 +36,10 @@ export function createTerrain() {
   geometry.computeVertexNormals();
   geometry.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
 
-  const material = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1 });
+  const material = new THREE.MeshStandardMaterial({
+    vertexColors: true,
+    roughness: 1,
+  });
   const mesh = new THREE.Mesh(geometry, material);
   mesh.rotation.x = -Math.PI / 2;
   mesh.receiveShadow = true;
@@ -45,22 +48,41 @@ export function createTerrain() {
 
 // ---- langit: bola raksasa dengan tekstur gradient biru->putih, dilihat dari dalam ----
 export function createSky() {
-  const canvas = document.createElement("canvas");
-  canvas.width = 2;
-  canvas.height = 512;
-  const ctx = canvas.getContext("2d");
-  const gradient = ctx.createLinearGradient(0, 0, 0, 512);
-  gradient.addColorStop(0, "#6ea8ff");   // biru langit
-  gradient.addColorStop(0.7, "#bcdcff"); // biru muda dekat horizon
-  gradient.addColorStop(1, "#eef0f3");   // nyambung mulus ke warna kabut
-  ctx.fillStyle = gradient;
-  ctx.fillRect(0, 0, 2, 512);
+  const uniforms = {
+    topColor: { value: new THREE.Color(0x6ea8ff) },
+    bottomColor: { value: new THREE.Color(0xeef0f3) },
+    offset: { value: 20 },
+    exponent: { value: 0.7 },
+  };
 
-  const texture = new THREE.CanvasTexture(canvas);
-  const geometry = new THREE.SphereGeometry(300, 32, 16);
-  const material = new THREE.MeshBasicMaterial({ map: texture, side: THREE.BackSide, fog: false });
-  return new THREE.Mesh(geometry, material);
+  const material = new THREE.ShaderMaterial({
+    uniforms,
+    vertexShader: `
+    void main() {
+        vec4 worldPosition = modelMatrix * vec4(position, 1.0);
+        vWorldPosition = worldPosition.xyz;
+        gl_Position = projectionMatrix * viewMatrix * worldPosition;
+      }
+    `,
+    fragmentShader: `
+      uniform vec3 topColor;
+      uniform vec3 bottomColor;
+      uniform float offset;
+      uniform float exponent;
+      varying vec3 vWorldPosition;
+      void main() {
+        float h = normalize(vWorldPosition + offset).y;
+        gl_FragColor = vec4(mix(bottomColor, topColor, max(pow(max(h, 0.0), exponent), 0.0)), 1.0);
+      }
+    `,
+    side: THREE.BackSide,
+    fog: false,
+  });
+  return new THREE.Mesh(new THREE.SphereGeometry(300, 32, 16), material);
 }
+
+// ganti referensi lamput biar bisa animate dari luar
+
 
 // ---- siluet gunung jauh, disebar melingkar, warna pudar (kesan atmosfer/jarak) ----
 export function createMountains() {
@@ -79,7 +101,11 @@ export function createMountains() {
     });
 
     const mountain = new THREE.Mesh(geometry, material);
-    mountain.position.set(Math.cos(angle) * radius, height / 2 - 3, Math.sin(angle) * radius);
+    mountain.position.set(
+      Math.cos(angle) * radius,
+      height / 2 - 3,
+      Math.sin(angle) * radius,
+    );
     group.add(mountain);
   }
   return group;
@@ -90,7 +116,8 @@ export function setupOutdoorLighting(scene, renderer) {
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
-  scene.add(new THREE.HemisphereLight(0xbcdcff, 0x6b8f4e, 0.7));
+  const hemi = new THREE.HemisphereLight(0xbcdcff, 0x6b8f4e, 0.7);
+  scene.add(hemi);
 
   const sun = new THREE.DirectionalLight(0xfff1d6, 1.1);
   sun.position.set(15, 20, 10);
@@ -101,4 +128,6 @@ export function setupOutdoorLighting(scene, renderer) {
   sun.shadow.camera.top = 20;
   sun.shadow.camera.bottom = -20;
   scene.add(sun);
+
+  return { hemi, sun }
 }
