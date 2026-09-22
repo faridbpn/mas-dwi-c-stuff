@@ -1,7 +1,7 @@
 import * as THREE from "three";
 
 // ---- tanah yang melandai kayak bukit, area tengah (tempat rak berdiri) tetap RATA ----
-function hillHeight(x, y) {
+export function hillHeight(x, y) {
   const dist = Math.sqrt(x * x + y * y);
   const flatRadius = 9; // area ini rata total, tempat rak/sampah/papan berdiri
 

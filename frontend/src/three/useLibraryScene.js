@@ -17,6 +17,8 @@ import {
 } from "./environment";
 import { createFireflies } from "./fireflies";
 import { createBirdFlock } from "./birds";
+import { createFallingLeaves } from "./leaves";
+import { createGrass } from "./grass";
 
 export function useLibraryScene({
   onMoveBook,
@@ -37,6 +39,8 @@ export function useLibraryScene({
   const shelfCounts = {};
   let fireflies = null;
   let birds = null;
+  let leaves = null;
+  let grass = null;
 
   let draggingMesh = null;
   let lastInteractionAt = performance.now();
@@ -82,6 +86,12 @@ export function useLibraryScene({
 
     birds = createBirdFlock(12); // tambah dari 6 jadi 12 burung
     scene.add(birds.group);
+
+    grass = createGrass(2500);
+    scene.add(grass.mesh);
+
+    leaves = createFallingLeaves(40);
+    scene.add(leaves.mesh);
 
     dayNightCycle = createDayNightCycle({
       scene,
@@ -179,6 +189,9 @@ export function useLibraryScene({
     birds.update(elapsed);
     fireflies.points.visible = isNight;
     birds.group.visible = true;
+
+    grass.update(elapsed);
+    leaves.update(elapsed, delta)
 
     updateShards(delta);
     updateIdleMotion(elapsed);
