@@ -1,4 +1,6 @@
 <template>
+  <LoadingScreen ref="loadingScreenRef" />
+
   <LibraryScene
     ref="libraryRef"
     :books="filteredBooks"
@@ -25,14 +27,7 @@
   <BookFormModal v-if="showModal" :book="activeBook" @submit="handleSubmit" @close="showModal = false" />
   <ToastStack :toasts="toasts" @action="undoDelete" />
 
-  <Transition name="fade">
-    <div v-if="initialLoading" class="loading-overlay">
-      <div class="spinner"></div>
-      <p>Menyusun rak buku...</p>
-    </div>
-  </Transition>
-
-   <button class="music-toggle" @click="toggleMute" :title="isMuted ? 'Nyalain musik' : 'Matiin musik'">
+  <button class="music-toggle" @click="toggleMute" :title="isMuted ? 'Nyalain musik' : 'Matiin musik'">
     {{ isMuted ? "🔇" : "🎵" }}
   </button>
 </template>
@@ -41,13 +36,14 @@
 import { useBackgroundMusic } from "./composables/useBackgroundMusic";
 const { isMuted, toggleMute } = useBackgroundMusic("/music/bgm.mp3", { volume: 0.3 });
 import { ref, computed, onMounted } from "vue";
+import LoadingScreen from "./components/LoadingScreen.vue";
 import LibraryScene from "./components/LibraryScene.vue";
 import BookFormModal from "./components/BookFormModal.vue";
 import ToastStack from "./components/ToastStack.vue";
 import { fetchBooks, createBook, updateBook, deleteBook } from "./api/books";
 
 const books = ref([]);
-const initialLoading = ref(true);
+const loadingScreenRef = ref(null);
 const showModal = ref(false);
 const activeBook = ref({ title: "", author: "", year: null, status: "mau_dibaca", genre: "", rating: 0, notes: "" });
 const libraryRef = ref(null);
@@ -69,7 +65,12 @@ const filteredBooks = computed(() => {
 async function refresh() { books.value = await fetchBooks(); }
 
 onMounted(async () => {
-  try { await refresh(); } finally { initialLoading.value = false; }
+  try { 
+    loadingScreenRef.value?.show();
+    await refresh(); 
+  } finally { 
+    loadingScreenRef.value?.hide();
+  }
 });
 
 function openAdd() {

@@ -7,20 +7,25 @@ import {
   createShelfMesh,
   createTrashMesh,
 } from "./shelfFactory";
+import { createDayNightCycle } from "./dayNight";
 import { loadDecorModel } from "./decorFactory";
 import {
   createTerrain,
   createSky,
   createMountains,
   setupOutdoorLighting,
-} from "./enviroment"; // <- FIX: cek ini sesuai nama file asli lo
+} from "./environment";
+import { createFireflies } from "./fireflies";
+import { createBirdFlock } from "./birds";
+import { createFallingLeaves } from "./leaves";
+import { createGrass } from "./grass";
 
 export function useLibraryScene({
   onMoveBook,
   onRequestDelete,
   onEditBook,
   onShelfLabelsUpdate,
-  onBoardAnchorUpdate, // <- FIX: ditambahin, sebelumnya ketinggalan
+  onBoardAnchorUpdate,
 }) {
   let renderer, scene, camera, controls, raycaster, pointer;
   let animationId = null;
@@ -30,7 +35,12 @@ export function useLibraryScene({
   const bookMeshes = new Map();
   const shelfGroups = [];
   let trashGroup = null;
+  let dayNightCycle = null;
   const shelfCounts = {};
+  let fireflies = null;
+  let birds = null;
+  let leaves = null;
+  let grass = null;
 
   let draggingMesh = null;
   let lastInteractionAt = performance.now();
@@ -50,7 +60,7 @@ export function useLibraryScene({
       50,
       container.clientWidth / container.clientHeight,
       0.1,
-      500
+      500,
     );
     camera.position.set(0, 3.2, 7);
 
@@ -64,11 +74,32 @@ export function useLibraryScene({
     controls.enableDamping = true;
     controls.maxPolarAngle = Math.PI / 2.05;
 
-    scene.add(createSky());
+    const sky = createSky();
+    scene.add(sky);
     scene.fog = new THREE.Fog(0xbcdcff, 30, 140);
-    setupOutdoorLighting(scene, renderer);
+
+    const { hemi, sun } = setupOutdoorLighting(scene, renderer);
     scene.add(createTerrain());
     scene.add(createMountains());
+    fireflies = createFireflies(45);
+    scene.add(fireflies.points);
+
+    birds = createBirdFlock(12); // tambah dari 6 jadi 12 burung
+    scene.add(birds.group);
+
+    grass = createGrass(2500);
+    scene.add(grass.mesh);
+
+    leaves = createFallingLeaves(40);
+    scene.add(leaves.mesh);
+
+    dayNightCycle = createDayNightCycle({
+      scene,
+      sky,
+      sun,
+      hemi,
+      cycleDurationSeconds: 180,
+    });
 
     SHELF_CONFIG.forEach((cfg) => {
       const shelf = createShelfMesh(cfg);
@@ -130,7 +161,7 @@ export function useLibraryScene({
   // FIX: cuma SATU versi projectToScreen, yang ada `inFront`-nya
   function projectToScreen(object3D, yOffset = 1.6) {
     const worldPos = new THREE.Vector3(0, yOffset, 0).applyMatrix4(
-      object3D.matrixWorld
+      object3D.matrixWorld,
     );
     const viewPos = worldPos.clone().applyMatrix4(camera.matrixWorldInverse);
     const inFront = viewPos.z < 0;
@@ -151,6 +182,16 @@ export function useLibraryScene({
 
     const delta = clock.getDelta();
     const elapsed = clock.getElapsedTime();
+
+    const { isNight } = dayNightCycle.update(elapsed);
+
+    fireflies.update(elapsed);
+    birds.update(elapsed);
+    fireflies.points.visible = isNight;
+    birds.group.visible = true;
+
+    grass.update(elapsed);
+    leaves.update(elapsed, delta)
 
     updateShards(delta);
     updateIdleMotion(elapsed);
@@ -238,12 +279,12 @@ export function useLibraryScene({
       const isNearTrash = distToTrash < 1.4;
       const targetScale = isNearTrash ? 1.35 : 1;
       trashGroup.scale.setScalar(
-        THREE.MathUtils.lerp(trashGroup.scale.x, targetScale, 0.25)
+        THREE.MathUtils.lerp(trashGroup.scale.x, targetScale, 0.25),
       );
       trashGroup.userData.body.material.color.set(
         isNearTrash
           ? trashGroup.userData.hoverColor
-          : trashGroup.userData.baseColor
+          : trashGroup.userData.baseColor,
       );
       return;
     }
@@ -260,7 +301,7 @@ export function useLibraryScene({
 
     const movedDistance = Math.hypot(
       event.clientX - pointerDownPos.x,
-      event.clientY - pointerDownPos.y
+      event.clientY - pointerDownPos.y,
     );
     const mesh = draggingMesh;
     draggingMesh = null;
@@ -279,7 +320,7 @@ export function useLibraryScene({
     }
 
     const targetShelf = shelfGroups.find(
-      (s) => Math.abs(mesh.position.x - s.position.x) < 1.3
+      (s) => Math.abs(mesh.position.x - s.position.x) < 1.3,
     );
     if (targetShelf && targetShelf.userData.status !== mesh.userData.status) {
       onMoveBook(mesh.userData.bookId, targetShelf.userData.status);
@@ -296,13 +337,13 @@ export function useLibraryScene({
     for (let i = 0; i < 10; i++) {
       const shard = new THREE.Mesh(
         new THREE.BoxGeometry(0.08, 0.08, 0.08),
-        new THREE.MeshStandardMaterial({ color: 0xcfcfd4 })
+        new THREE.MeshStandardMaterial({ color: 0xcfcfd4 }),
       );
       shard.position.copy(origin);
       shard.userData.velocity = new THREE.Vector3(
         (Math.random() - 0.5) * 3,
         Math.random() * 2 + 1,
-        (Math.random() - 0.5) * 3
+        (Math.random() - 0.5) * 3,
       );
       shard.userData.life = 0.9;
       scene.add(shard);

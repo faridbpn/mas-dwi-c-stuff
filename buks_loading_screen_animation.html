@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BUKS! Loading Screen</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@600;700;800&family=Plus+Jakarta+Sans:wght@500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+        }
+
+        .text-buks {
+            font-family: 'Fredoka', cursive, sans-serif;
+            text-transform: uppercase;
+            letter-spacing: -1px;
+        }
+
+        /* SVG & Mascot Custom Keyframe Animations */
+        @keyframes floatSeal {
+            0%, 100% {
+                transform: translateY(0px) rotate(0deg);
+            }
+            25% {
+                transform: translateY(-12px) rotate(-3deg);
+            }
+            50% {
+                transform: translateY(-4px) rotate(2deg);
+            }
+            75% {
+                transform: translateY(-16px) rotate(-1deg);
+            }
+        }
+
+        @keyframes hatWiggle {
+            0%, 100% { transform: rotate(0deg) translateY(0); }
+            30% { transform: rotate(-8deg) translateY(-2px); }
+            60% { transform: rotate(6deg) translateY(-1px); }
+        }
+
+        @keyframes tailWag {
+            0%, 100% { transform: rotate(0deg); }
+            50% { transform: rotate(18deg); }
+        }
+
+        @keyframes waveFloat {
+            0% { transform: translateX(0); }
+            50% { transform: translateX(-25px); }
+            100% { transform: translateX(0); }
+        }
+
+        @keyframes pulseGlow {
+            0%, 100% { opacity: 0.3; transform: scale(0.95); }
+            50% { opacity: 0.6; transform: scale(1.05); }
+        }
+
+        /* Animated Classes */
+        .animate-seal {
+            animation: floatSeal 2.8s ease-in-out infinite;
+            transform-origin: center bottom;
+        }
+
+        .animate-hat {
+            animation: hatWiggle 2.8s ease-in-out infinite;
+            transform-origin: bottom center;
+        }
+
+        .animate-tail {
+            animation: tailWag 1.2s ease-in-out infinite;
+            transform-origin: right center;
+        }
+
+        .animate-wave-1 {
+            animation: waveFloat 4s ease-in-out infinite;
+        }
+
+        .animate-wave-2 {
+            animation: waveFloat 6s ease-in-out infinite reverse;
+        }
+
+        .shadow-pulse {
+            animation: pulseGlow 2.8s ease-in-out infinite;
+        }
+
+        /* Custom Playful Letters styling for BUKS! */
+        .buks-letter {
+            display: inline-block;
+            transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+            filter: drop-shadow(3px 5px 0px rgba(30, 58, 138, 0.15));
+        }
+
+        .buks-letter:hover {
+            transform: scale(1.2) rotate(-6deg);
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f5f9;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #94a3b8;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body class="bg-slate-100 text-slate-800 antialiased min-h-screen flex flex-col justify-between overflow-x-hidden">
+
+    <!-- OVERLAY LOADING SCREEN -->
+    <div id="loading-screen" class="fixed inset-0 z-50 flex flex-col items-center justify-center bg-white transition-opacity duration-700 ease-in-out">
+        
+        <!-- Water Blob Background Decorative Shapes -->
+        <div class="absolute w-96 h-96 bg-sky-100 rounded-full blur-3xl opacity-70 -z-10 animate-pulse"></div>
+        <div class="absolute w-80 h-80 bg-blue-50 rounded-full blur-2xl opacity-60 -z-10 -translate-y-12 translate-x-12"></div>
+
+        <!-- Main Animation Container -->
+        <div class="relative flex flex-col items-center justify-center px-4 max-w-lg w-full text-center">
+            
+            <!-- SEAL & LOGO CONTAINER -->
+            <div class="relative mb-6 select-none">
+                
+                <!-- SVG Animated Sea Lion Mascot -->
+                <div class="animate-seal relative z-10 w-64 h-64 sm:w-72 sm:h-72 flex items-center justify-center">
+                    <svg viewBox="0 0 400 350" class="w-full h-full drop-shadow-xl" xmlns="http://www.w3.org/2000/svg">
+                        <defs>
+                            <!-- Seal Body Gradient -->
+                            <linearGradient id="sealBodyGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                                <stop offset="0%" stop-color="#94A3B8" />
+                                <stop offset="50%" stop-color="#78889E" />
+                                <stop offset="100%" stop-color="#5B687A" />
+                            </linearGradient>
+                            
+                            <!-- Belly Soft Highlight Gradient -->
+                            <linearGradient id="bellyGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+                                <stop offset="0%" stop-color="#E2E8F0" />
+                                <stop offset="100%" stop-color="#CBD5E1" />
+                            </linearGradient>
+
+                            <linearGradient id="hatBandGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+                                <stop offset="0%" stop-color="#38BDF8" />
+                                <stop offset="100%" stop-color="#0284C7" />
+                            </linearGradient>
+                        </defs>
+
+                        <!-- Seal Shadow -->
+                        <ellipse cx="200" cy="315" rx="110" ry="18" fill="#1E293B" opacity="0.12" class="shadow-pulse" />
+
+                        <!-- Seal Tail (Flipper) -->
+                        <g class="animate-tail">
+                            <path d="M 95 245 C 60 250 40 220 30 230 C 25 235 35 260 55 265 C 75 270 95 258 95 245 Z" 
+                                  fill="#64748B" stroke="#334155" stroke-width="7" stroke-linejoin="round" />
+                        </g>
+
+                        <!-- Main Seal Body -->
+                        <path d="M 90 245 C 70 190 120 125 210 135 C 290 145 320 200 310 250 C 300 290 220 305 150 295 C 110 290 95 270 90 245 Z" 
+                              fill="url(#sealBodyGrad)" stroke="#2C3E50" stroke-width="8" stroke-linejoin="round" />
+
+                        <!-- Soft Belly Patch -->
+                        <path d="M 120 255 C 110 220 150 175 210 180 C 265 185 285 220 275 255 C 260 285 190 292 140 285 C 125 280 120 268 120 255 Z" 
+                              fill="url(#bellyGrad)" opacity="0.85" />
+
+                        <!-- Side Flipper (Fin) -->
+                        <path d="M 175 245 C 150 265 140 285 165 285 C 190 285 205 260 200 245 Z" 
+                              fill="#526071" stroke="#2C3E50" stroke-width="7" stroke-linejoin="round" />
+
+                        <!-- Cute Cute Cheeks Pink -->
+                        <ellipse cx="230" cy="245" rx="12" ry="8" fill="#F43F5E" opacity="0.25" />
+
+                        <!-- Glasses Frame (Rounded dark glasses like the logo) -->
+                        <g id="glasses" stroke="#1E293B" stroke-width="7" fill="none" stroke-linecap="round">
+                            <!-- Left Lens -->
+                            <circle cx="258" cy="236" r="16" fill="#FFFFFF" fill-opacity="0.2" />
+                            <!-- Right Lens -->
+                            <circle cx="288" cy="236" r="16" fill="#FFFFFF" fill-opacity="0.2" />
+                            <!-- Bridge -->
+                            <path d="M 274 234 Q 278 230 282 234" />
+                            <!-- Side arm -->
+                            <path d="M 242 234 Q 235 230 230 232" />
+                        </g>
+
+                        <!-- Eyes inside glasses -->
+                        <circle cx="260" cy="236" r="4" fill="#0F172A" />
+                        <circle cx="286" cy="236" r="4" fill="#0F172A" />
+                        <!-- Eye shine -->
+                        <circle cx="258" cy="234" r="1.5" fill="#FFFFFF" />
+                        <circle cx="284" cy="234" r="1.5" fill="#FFFFFF" />
+
+                        <!-- Cute Mouth & Snout -->
+                        <path d="M 285 248 C 280 255 275 255 270 248 C 265 255 260 255 255 248" 
+                              stroke="#1E293B" stroke-width="5" fill="none" stroke-linecap="round" />
+                        <!-- Cute Oval Nose -->
+                        <ellipse cx="270" cy="245" rx="5" ry="3.5" fill="#1E293B" />
+
+                        <!-- Top Hat (Gentleman Hat from Logo) -->
+                        <g class="animate-hat">
+                            <!-- Hat Base/Brim -->
+                            <path d="M 205 152 Q 240 142 275 152 Q 240 160 205 152 Z" fill="#1E293B" stroke="#0F172A" stroke-width="4" />
+                            <!-- Hat Crown -->
+                            <path d="M 218 150 L 224 105 Q 240 102 256 105 L 262 150 Z" fill="#334155" stroke="#0F172A" stroke-width="5" stroke-linejoin="round" />
+                            <!-- Hat Blue Ribbon Band -->
+                            <path d="M 219 143 L 221 130 Q 240 127 259 130 L 261 143 Z" fill="url(#hatBandGrad)" />
+                        </g>
+
+                        <!-- Floating Water Bubbles -->
+                        <circle cx="310" cy="140" r="6" fill="#38BDF8" opacity="0.6" class="animate-bounce" style="animation-duration: 2.2s;" />
+                        <circle cx="110" cy="160" r="4" fill="#0284C7" opacity="0.4" class="animate-bounce" style="animation-duration: 3.1s;" />
+                    </svg>
+                </div>
+
+                <!-- Animated Water Waves Under Seal -->
+                <div class="absolute -bottom-2 left-1/2 -translate-x-1/2 w-48 h-6 overflow-hidden pointer-events-none opacity-40">
+                    <svg class="animate-wave-1 w-64 h-full" viewBox="0 0 200 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M0 10 Q 25 0, 50 10 T 100 10 T 150 10 T 200 10 V 20 H 0 Z" fill="#38BDF8"/>
+                    </svg>
+                </div>
+            </div>
+
+            <!-- LOGO TEXT: "BUKS!" (Replaced ANIMMY with playful blue stylized text) -->
+            <div class="text-buks flex items-center justify-center space-x-1 sm:space-x-2 my-2 cursor-default select-none">
+                <span class="buks-letter text-6xl sm:text-7xl font-black text-sky-600 -rotate-6 transform hover:rotate-0">B</span>
+                <span class="buks-letter text-6xl sm:text-7xl font-black text-blue-500 rotate-3 transform translate-y-1">U</span>
+                <span class="buks-letter text-6xl sm:text-7xl font-black text-slate-700 -rotate-3 transform -translate-y-1">K</span>
+                <span class="buks-letter text-6xl sm:text-7xl font-black text-sky-500 rotate-6 transform">S</span>
+                <span class="buks-letter text-6xl sm:text-7xl font-black text-blue-600 -rotate-12 transform scale-110">!</span>
+            </div>
+
+            <p id="loading-status" class="text-sm sm:text-base font-semibold text-slate-500 tracking-wide mt-1 mb-6 h-6">
+                Menyiapkan hal-hal seru...
+            </p>
+
+            <!-- PROGRESS BAR CONTAINER -->
+            <div class="w-full max-w-xs bg-slate-200/80 rounded-full h-3.5 p-0.5 shadow-inner relative overflow-hidden mb-3">
+                <!-- Progress Bar Fill -->
+                <div id="progress-bar" 
+                     class="bg-gradient-to-r from-sky-400 via-blue-500 to-indigo-600 h-full rounded-full transition-all duration-300 ease-out w-0 shadow-sm">
+                </div>
+            </div>
+
+            <!-- Percentage Counter -->
+            <div id="progress-text" class="text-xs font-bold text-slate-400 tracking-wider">
+                0%
+            </div>
+
+            <!-- Reload / Simulation Trigger Button -->
+            <button onclick="restartLoading()" class="mt-8 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-semibold rounded-lg transition-colors border border-slate-300 flex items-center space-x-2">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                <span>Ulangi Simulasi Loading</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- DEMO MAIN WEBSITE CONTENT (Appears after loading) -->
+    <header class="bg-white border-b border-slate-200 sticky top-0 z-30">
+        <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+            <div class="flex items-center space-x-3">
+                <div class="w-9 h-9 bg-sky-500 rounded-xl flex items-center justify-center text-white font-black text-xl shadow-md font-['Fredoka']">
+                    B
+                </div>
+                <span class="font-extrabold text-xl text-slate-800 tracking-tight font-['Fredoka']">BUKS<span class="text-sky-500">!</span></span>
+            </div>
+            <nav class="hidden md:flex space-x-8 text-sm font-semibold text-slate-600">
+                <a href="#" class="text-sky-600">Beranda</a>
+                <a href="#" class="hover:text-sky-600 transition">Fitur</a>
+                <a href="#" class="hover:text-sky-600 transition">Galeri</a>
+                <a href="#" class="hover:text-sky-600 transition">Kontak</a>
+            </nav>
+            <button onclick="triggerLoadingScreen()" class="bg-sky-500 hover:bg-sky-600 text-white px-4 py-2 rounded-xl text-sm font-bold shadow-md shadow-sky-500/20 transition transform active:scale-95">
+                Tes Loading
+            </button>
+        </div>
+    </header>
+
+    <main class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-12 flex-1">
+        <!-- Hero Banner -->
+        <div class="bg-gradient-to-br from-slate-900 via-blue-950 to-slate-900 rounded-3xl p-8 sm:p-12 text-white shadow-2xl relative overflow-hidden mb-12">
+            <div class="absolute -right-10 -bottom-10 opacity-10 pointer-events-none">
+                <svg width="400" height="400" viewBox="0 0 200 200"><path fill="#FFFFFF" d="M45,-60C58,-51,67,-36,71,-20C75,-4,74,13,67,28C60,43,47,56,32,64C17,72,-1,75,-18,72C-35,69,-51,60,-61,46C-71,32,-75,13,-73,-5C-71,-23,-63,-40,-50,-50C-37,-60,-19,-63,-1,-62C17,-61,32,-69,45,-60Z" transform="translate(100 100)" /></svg>
+            </div>
+            <div class="max-w-2xl relative z-10">
+                <span class="bg-sky-500/20 text-sky-300 border border-sky-500/30 text-xs font-bold px-3 py-1 rounded-full uppercase tracking-wider mb-4 inline-block">
+                    Loading Screen Ready
+                </span>
+                <h1 class="text-3xl sm:text-5xl font-extrabold tracking-tight mb-4 leading-tight">
+                    Selamat Datang di Website <span class="text-sky-400">BUKS!</span>
+                </h1>
+                <p class="text-slate-300 text-base sm:text-lg mb-8 leading-relaxed">
+                    Animasi loading anjing laut bertopi & berkacamata khas logo **BUKS!** berhasil dipasang secara halus & interaktif.
+                </p>
+                <div class="flex flex-wrap gap-4">
+                    <button onclick="triggerLoadingScreen()" class="bg-sky-500 hover:bg-sky-400 text-white font-bold px-6 py-3 rounded-xl shadow-lg transition">
+                        Coba Loading Screen Lagi
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Features Grid -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div class="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm hover:shadow-md transition">
+                <div class="w-12 h-12 bg-sky-100 rounded-xl flex items-center justify-center text-sky-600 mb-4 font-bold text-xl">
+                    🎨
+                </div>
+                <h3 class="font-bold text-lg text-slate-800 mb-2">Desain Khas "BUKS!"</h3>
+                <p class="text-slate-500 text-sm leading-relaxed">
+                    Tulisan "ANIMMY!" diganti menjadi "BUKS!" dengan font melengkung bergaya playful bernuansa warna biru khas.
+                </p>
+            </div>
+
+            <div class="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm hover:shadow-md transition">
+                <div class="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center text-blue-600 mb-4 font-bold text-xl">
+                    🦭
+                </div>
+                <h3 class="font-bold text-lg text-slate-800 mb-2">Maskot Animated Vector</h3>
+                <p class="text-slate-500 text-sm leading-relaxed">
+                    Anjing laut bertopi dan berkacamata digambar persis seperti logo dan dilengkapi animasi mengapung (floating & wiggling).
+                </p>
+            </div>
+
+            <div class="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm hover:shadow-md transition">
+                <div class="w-12 h-12 bg-indigo-100 rounded-xl flex items-center justify-center text-indigo-600 mb-4 font-bold text-xl">
+                    ⚡
+                </div>
+                <h3 class="font-bold text-lg text-slate-800 mb-2">Ringan & Responsive</h3>
+                <p class="text-slate-500 text-sm leading-relaxed">
+                    Menggunakan SVG murni dan CSS keyframes tanpa gambar berat, sehingga loading sangat cepat dan tajam di semua resolusi layar.
+                </p>
+            </div>
+        </div>
+    </main>
+
+    <footer class="bg-white border-t border-slate-200 py-6 text-center text-slate-400 text-sm">
+        &copy; 2026 BUKS! Interactive Animation Loader.
+    </footer>
+
+    <script>
+        // Loading Progress Logic
+        let progress = 0;
+        let animationInterval = null;
+
+        const loadingPhrases = [
+            "Menyiapkan topi & kacamata...",
+            "Memanggil Sea Lion BUKS!...",
+            "Mengisi air kolam...",
+            "Memuat halaman web...",
+            "Hampir selesai!"
+        ];
+
+        function updateLoadingState() {
+            const progressBar = document.getElementById('progress-bar');
+            const progressText = document.getElementById('progress-text');
+            const loadingStatus = document.getElementById('loading-status');
+
+            if (!progressBar || !progressText) return;
+
+            progressBar.style.width = progress + '%';
+            progressText.innerText = Math.floor(progress) + '%';
+
+            // Change dynamic text state
+            if (progress < 25) {
+                loadingStatus.innerText = loadingPhrases[0];
+            } else if (progress < 50) {
+                loadingStatus.innerText = loadingPhrases[1];
+            } else if (progress < 75) {
+                loadingStatus.innerText = loadingPhrases[2];
+            } else if (progress < 95) {
+                loadingStatus.innerText = loadingPhrases[3];
+            } else {
+                loadingStatus.innerText = loadingPhrases[4];
+            }
+
+            if (progress >= 100) {
+                clearInterval(animationInterval);
+                setTimeout(() => {
+                    const screen = document.getElementById('loading-screen');
+                    if (screen) {
+                        screen.classList.add('opacity-0', 'pointer-events-none');
+                    }
+                }, 400);
+            }
+        }
+
+        function startSimulatedLoading() {
+            progress = 0;
+            const screen = document.getElementById('loading-screen');
+            if (screen) {
+                screen.classList.remove('opacity-0', 'pointer-events-none');
+            }
+
+            if (animationInterval) clearInterval(animationInterval);
+
+            animationInterval = setInterval(() => {
+                // Random dynamic increment to simulate real web resource loading
+                const increment = Math.random() * 12 + 3;
+                progress += increment;
+
+                if (progress > 100) progress = 100;
+                updateLoadingState();
+            }, 180);
+        }
+
+        function restartLoading() {
+            startSimulatedLoading();
+        }
+
+        function triggerLoadingScreen() {
+            startSimulatedLoading();
+        }
+
+        // Start animation automatically on page load
+        window.addEventListener('load', () => {
+            startSimulatedLoading();
+        });
+    </script>
+</body>
+</html>
