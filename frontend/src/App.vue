@@ -90,8 +90,14 @@ async function handleSubmit(payload) {
 async function handleMove({ id, status }) {
   const book = books.value.find((b) => b.id === id);
   if (!book) return;
-  await updateBook(id, { ...book, status });
-  await refresh();
+  try {
+    await updateBook(id, { ...book, status });
+    await refresh();
+  } catch (e) {
+    console.error("Gagal memindahkan buku:", e);
+    alert("Gagal memindahkan buku. Cek apakah server sudah berjalan");
+    libraryRef.value?.refreshLayout();
+  }
 }
 
 const toasts = ref([]);
@@ -101,8 +107,8 @@ function requestDelete(bookId) {
   if (!book) return;
   const toastId = crypto.randomUUID();
   const timeoutId = setTimeout(() => finalizeDelete(bookId, toastId), UNDO_WINDOW_MS);
-  toasts.value.push({ id: toastId, bookId, message: `"${book.title}" dihapus`, actionLabel: "Undo", duration: UNDO_WINDOW_MS, timeoutId });
-}
+  toasts.value.push({ id: toastId, bookId, message: `"${book.title}" dihapus`, actionLabel: "Undo", durat
+},
 async function finalizeDelete(bookId, toastId) {
   toasts.value = toasts.value.filter((t) => t.id !== toastId);
   try {
@@ -112,14 +118,14 @@ async function finalizeDelete(bookId, toastId) {
     console.error(e);
     libraryRef.value?.refreshLayout();
   }
-}
+},
 function undoDelete(toastId) {
   const toast = toasts.value.find((t) => t.id === toastId);
   if (!toast) return;
   clearTimeout(toast.timeoutId);
   toasts.value = toasts.value.filter((t) => t.id !== toastId);
   libraryRef.value?.refreshLayout();
-}
+})
 </script>
 
 <style>

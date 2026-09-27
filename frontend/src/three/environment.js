@@ -81,33 +81,122 @@ export function createSky() {
   return new THREE.Mesh(new THREE.SphereGeometry(300, 32, 16), material);
 }
 
-// ganti referensi lamput biar bisa animate dari luar
+function ridgeNoise(x, y) {
+  return (
+    Math.sin(x * 1.7 + y * 0.9) * 0.5 +
+    Math.sin(x * 0.55 - y * 1.4) * 0.3 +
+    Math.sin(x * 3.2 + y * 2.6) * 0.2
+  );
+}
 
+function createJaggedMountain({
+  baseRadius,
+  height,
+  segments,
+  jaggedness,
+  baseColor,
+  darkColor,
+  snowColor,
+  snowLine,
+}) {
+  let geometry = new THREE.ConeGeometry(baseRadius, height, segments, 5, false);
+  geometry = geometry.toNonIndexed();
 
-// ---- siluet gunung jauh, disebar melingkar, warna pudar (kesan atmosfer/jarak) ----
+  const pos = geometry.attributes.position;
+  const colors = [];
+  const base = new THREE.Color(baseColor);
+  const dark = new THREE.Color(darkColor);
+  const snow = new THREE.Color(snowColor);
+
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i);
+    const y = pos.getY(i);
+    const z = pos.getZ(i);
+    const heightT = THREE.MathUtils.clamp((y + height / 2) / height, 0, 1);
+
+    const n = ridgeNoise(x * 0.4, z * 0.4) * jaggedness * heightT;
+    pos.setX(i, x + n);
+    pos.setZ(i, z + n * 0.7);
+
+    let color;
+    if (heightT > snowLine)
+      color = base.clone().lerp(snow, (heightT - snowLine) / (1 - snowLine));
+    else color = dark.clone().lerp(base, heightT / snowLine);
+    colors.push(color.r, color.g, color.b);
+  }
+
+  geometry.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
+  geometry.computeVertexNormals();
+
+  const material = new THREE.MeshStandardMaterial({
+    vertexColors: true,
+    flatShading: true,
+    fog: true,
+  });
+  return new THREE.Mesh(geometry, material);
+}
+
 export function createMountains() {
   const group = new THREE.Group();
-  const count = 14;
 
-  for (let i = 0; i < count; i++) {
-    const angle = (i / count) * Math.PI * 2 + Math.random() * 0.2;
-    const radius = 55 + Math.random() * 25;
-    const height = 12 + Math.random() * 18;
+  const layers = [
+    {
+      count: 10,
+      radiusRange: [42, 58],
+      heightRange: [14, 24],
+      segments: 7,
+      jaggedness: 2.2,
+      baseColor: 0x5b6b52,
+      darkColor: 0x3c4a38,
+      snowColor: 0xf3f6fa,
+      snowLine: 0.72,
+    },
+    {
+      count: 10,
+      radiusRange: [64, 82],
+      heightRange: [16, 26],
+      segments: 6,
+      jaggedness: 1.6,
+      baseColor: 0x7c8a9c,
+      darkColor: 0x5c6a7c,
+      snowColor: 0xf6f8fb,
+      snowLine: 0.68,
+    },
+    {
+      count: 8,
+      radiusRange: [90, 115],
+      heightRange: [18, 28],
+      segments: 5,
+      jaggedness: 1.0,
+      baseColor: 0xaebbcc,
+      darkColor: 0x9aa8bb,
+      snowColor: 0xf7f9fc,
+      snowLine: 0.6,
+    },
+  ];
 
-    const geometry = new THREE.ConeGeometry(10 + Math.random() * 8, height, 5); // 5 sisi = low-poly
-    const material = new THREE.MeshStandardMaterial({
-      color: new THREE.Color().setHSL(0.62 + Math.random() * 0.05, 0.25, 0.55),
-      flatShading: true,
-    });
+  layers.forEach((layer) => {
+    for (let i = 0; i < layer.count; i++) {
+      const angle = (i / layer.count) * Math.PI * 2 + Math.random() * 0.25;
+      const radius = THREE.MathUtils.randFloat(...layer.radiusRange);
+      const height = THREE.MathUtils.randFloat(...layer.heightRange);
+      const baseRadius = height * (0.55 + Math.random() * 0.25);
 
-    const mountain = new THREE.Mesh(geometry, material);
-    mountain.position.set(
-      Math.cos(angle) * radius,
-      height / 2 - 3,
-      Math.sin(angle) * radius,
-    );
-    group.add(mountain);
-  }
+      const mountain = createJaggedMountain({
+        baseRadius,
+        height,
+        segments: layer.segments,
+        jaggedness: layer.jaggedness,
+        baseColor: layer.baseColor,
+        darkColor: layer.darkColor,
+        snowColor: layer.snowColor,
+        snowLine: layer.snowLine,
+      });
+      mountain.position.set(Math.cos(angle) * radius, height / 2 - 3, Math.sin(angle) * radius);
+      group.add(mountain);
+    }
+  });
+
   return group;
 }
 
@@ -129,5 +218,5 @@ export function setupOutdoorLighting(scene, renderer) {
   sun.shadow.camera.bottom = -20;
   scene.add(sun);
 
-  return { hemi, sun }
+  return { hemi, sun };
 }

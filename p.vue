@@ -1,14 +1,18 @@
 <template>
   <div ref="containerRef" class="scene-container">
-    <div v-for="label in visibleEmptyLabels" :key="label.status" class="shelf-empty-label" :style="{ left: label.x + 'px', top: label.y + 'px' }">
+    <div
+      v-for="label in emptyShelfLabels"
+      :key="label.status"
+      class="shelf-empty-label"
+      :style="{ left: label.x + 'px', top: label.y + 'px' }"
+    >
       <span class="bounce-arrow">👇</span>
-      <p v-if="isFiltering">Gak ada hasil di rak "{{ label.label }}"</p>
-      <p v-else>Rak "{{ label.label }}" masih kosong,<br />yuk drag buku ke sini 👋</p>
+      <p>Rak "{{ label.label }}" masih kosong,<br />yuk drag buku ke sini 👋</p>
     </div>
 
     <DashboardBoard
       v-if="boardAnchor.inFront"
-      :books="allBooks"
+      :books="books"
       class="dashboard-anchor"
       :style="{ left: boardAnchor.x + 'px', top: boardAnchor.y + 'px' }"
     />
@@ -21,9 +25,9 @@ import { useLibraryScene } from "../three/useLibraryScene";
 import DashboardBoard from "./DashboardBoard.vue";
 
 const props = defineProps({
-  books: { type: Array, required: true },       // sudah kefilter search/genre, dipake buat rak
-  allBooks: { type: Array, required: true },     // TANPA filter, dipake buat statistik dashboard
-  isFiltering: { type: Boolean, default: false },
+  books: { type: Array, required: true },              // SELALU full list, gak pernah difilter
+  matchedIds: { type: Set, default: () => new Set() },  // BARU: id buku yang cocok search/genre
+  hasActiveFilter: { type: Boolean, default: false },   // BARU: search/genre lagi aktif apa enggak
 });
 const emit = defineEmits(["edit-book", "move-book", "request-delete"]);
 
@@ -32,7 +36,7 @@ const shelfLabels = ref([]);
 const boardAnchor = ref({ x: 0, y: 0, inFront: false });
 let scene;
 
-const visibleEmptyLabels = computed(() => shelfLabels.value.filter((l) => l.count === 0));
+const emptyShelfLabels = computed(() => shelfLabels.value.filter((l) => l.count === 0));
 
 onMounted(() => {
   scene = useLibraryScene({
@@ -44,9 +48,14 @@ onMounted(() => {
   });
   scene.init(containerRef.value);
   scene.layoutBooks(props.books);
+  scene.updateHighlight(props.matchedIds, props.hasActiveFilter);
 });
 
 watch(() => props.books, (b) => scene?.layoutBooks(b), { deep: true });
+watch([() => props.matchedIds, () => props.hasActiveFilter], ([ids, active]) => {
+  scene?.updateHighlight(ids, active);
+});
+
 onBeforeUnmount(() => scene?.destroy());
 defineExpose({ refreshLayout: () => scene?.layoutBooks(props.books) });
 </script>

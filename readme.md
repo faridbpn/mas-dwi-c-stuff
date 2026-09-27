@@ -123,6 +123,8 @@ Confetti pas selesai baca (#9) — effort kecil, reward psikologis instan.
 
 Sound effect kontekstual — "thud" pelan pas buku nempel ke rak, "crash" pas kena sampah (nyambung ke shatter animation yang udah ada), "swoosh" pas kamera auto-orbit mulai jalan. Audio pendek (<1 detik), sama kayak BGM tapi instance Audio terpisah yang di-play() sesuai event, bukan loop.
 
-Daun gugur / partikel debu kena cahaya matahari — sempet gue singgung di pesan sebelumnya, partikel jatuh pelan (~40 titik), murah tapi dampak atmosfer-nya berasa. mungkin dibuat daun terbang gitu dan kita perlu nambahin rumput2 yang ketiup angin juga berarti
+🚀Daun gugur / partikel debu kena cahaya matahari — sempet gue singgung di pesan sebelumnya, partikel jatuh pelan (~40 titik), murah tapi dampak atmosfer-nya berasa. mungkin dibuat daun terbang gitu dan kita perlu nambahin rumput2 yang ketiup angin juga berarti
 
-ok kita mulai dari siklus pagi malem dul
+Highlight buku yang match hasil search — daripada buku yang gak cocok search-nya "ilang" total dari rak (perilaku sekarang), alternatifnya: buku yang gak match diredupin/transparan, yang match tetep solid + glow tipis. Kesannya lebih "browsing perpustakaan", bukan filter keras.
+
+better graphics

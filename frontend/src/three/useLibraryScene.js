@@ -19,6 +19,7 @@ import { createFireflies } from "./fireflies";
 import { createBirdFlock } from "./birds";
 import { createFallingLeaves } from "./leaves";
 import { createGrass } from "./grass";
+import { applyHighlightState } from "./bookHighlight";
 
 export function useLibraryScene({
   onMoveBook,
@@ -41,6 +42,8 @@ export function useLibraryScene({
   let birds = null;
   let leaves = null;
   let grass = null;
+  let highlightMachedIds = new Set();
+  let highlightActive = false;
 
   let draggingMesh = null;
   let lastInteractionAt = performance.now();
@@ -76,7 +79,7 @@ export function useLibraryScene({
 
     const sky = createSky();
     scene.add(sky);
-    scene.fog = new THREE.Fog(0xbcdcff, 30, 140);
+    scene.fog = new THREE.FogExp2(0xbcdcff, 0.018);
 
     const { hemi, sun } = setupOutdoorLighting(scene, renderer);
     scene.add(createTerrain());
@@ -191,7 +194,7 @@ export function useLibraryScene({
     birds.group.visible = true;
 
     grass.update(elapsed);
-    leaves.update(elapsed, delta)
+    leaves.update(elapsed, delta);
 
     updateShards(delta);
     updateIdleMotion(elapsed);
@@ -396,6 +399,22 @@ export function useLibraryScene({
         mesh.position.set(startX + index * spacing, 0.5, 0);
       });
     });
+    applyHighlightToAll();
+  }
+
+  function applyHighlightToAll() {
+    bookMeshes.forEach((mesh, id) => {
+      applyHighlightState(mesh, {
+        isMatch: highlightMatchedIds.has(id),
+        active: highlightActive,
+      });
+    });
+  }
+
+  function updateHighlight(matchedIds, active) {
+    highlightMachedIds = matchedIds;
+    highlightActive = active;
+    applyHighlightState();
   }
 
   function onResize() {
@@ -416,5 +435,5 @@ export function useLibraryScene({
     container?.removeChild(renderer.domElement);
   }
 
-  return { init, layoutBooks, destroy };
+  return { init, layoutBooks, updateHighlight, destroy };
 }
