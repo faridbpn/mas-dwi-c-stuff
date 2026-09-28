@@ -1,69 +1,58 @@
 <template>
-  <div ref="containerRef" class="scene-container">
-    <div
-      v-for="label in emptyShelfLabels"
-      :key="label.status"
-      class="shelf-empty-label"
-      :style="{ left: label.x + 'px', top: label.y + 'px' }"
-    >
-      <span class="bounce-arrow">👇</span>
-      <p>Rak "{{ label.label }}" masih kosong,<br />yuk drag buku ke sini 👋</p>
-    </div>
+  <LibraryScene
+    ref="libraryRef"
+    :books="books"
+    :matched-ids="matchedBookIds"
+    :has-active-filter="hasActiveFilter"
+    @edit-book="openEdit"
+    @move-book="handleMove"
+    @request-delete="requestDelete"
+  />
 
-    <DashboardBoard
-      v-if="boardAnchor.inFront"
-      :books="books"
-      class="dashboard-anchor"
-      :style="{ left: boardAnchor.x + 'px', top: boardAnchor.y + 'px' }"
-    />
-  </div>
+  <!-- search-bar, genre-filter, fab-add, dst TETEP SAMA -->
+  <!-- ...(gak berubah)... -->
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onBeforeUnmount, watch } from "vue";
-import { useLibraryScene } from "../three/useLibraryScene";
-import DashboardBoard from "./DashboardBoard.vue";
+// ...(import & deklarasi lain tetep sama)...
 
-const props = defineProps({
-  books: { type: Array, required: true },              // SELALU full list, gak pernah difilter
-  matchedIds: { type: Set, default: () => new Set() },  // BARU: id buku yang cocok search/genre
-  hasActiveFilter: { type: Boolean, default: false },   // BARU: search/genre lagi aktif apa enggak
-});
-const emit = defineEmits(["edit-book", "move-book", "request-delete"]);
+const searchQuery = ref("");
+const activeGenre = ref(null);
 
-const containerRef = ref(null);
-const shelfLabels = ref([]);
-const boardAnchor = ref({ x: 0, y: 0, inFront: false });
-let scene;
+const allGenres = computed(() => [...new Set(books.value.map((b) => b.genre).filter(Boolean))]);
 
-const emptyShelfLabels = computed(() => shelfLabels.value.filter((l) => l.count === 0));
-
-onMounted(() => {
-  scene = useLibraryScene({
-    onEditBook: (id) => emit("edit-book", id),
-    onMoveBook: (id, status) => emit("move-book", { id, status }),
-    onRequestDelete: (id) => emit("request-delete", id),
-    onShelfLabelsUpdate: (positions) => { shelfLabels.value = positions; },
-    onBoardAnchorUpdate: (anchor) => { boardAnchor.value = anchor; },
+// GANTI: dulu `filteredBooks` (nge-filter array), sekarang `matchedBookIds` (nandain doang)
+const matchedBookIds = computed(() => {
+  const q = searchQuery.value.trim().toLowerCase();
+  const ids = new Set();
+  books.value.forEach((b) => {
+    const matchesSearch = !q || b.title.toLowerCase().includes(q) || b.author.toLowerCase().includes(q);
+    const matchesGenre = !activeGenre.value || b.genre === activeGenre.value;
+    if (matchesSearch && matchesGenre) ids.add(b.id);
   });
-  scene.init(containerRef.value);
-  scene.layoutBooks(props.books);
-  scene.updateHighlight(props.matchedIds, props.hasActiveFilter);
+  return ids;
 });
 
-watch(() => props.books, (b) => scene?.layoutBooks(b), { deep: true });
-watch([() => props.matchedIds, () => props.hasActiveFilter], ([ids, active]) => {
-  scene?.updateHighlight(ids, active);
-});
+const hasActiveFilter = computed(
+  () => searchQuery.value.trim().length > 0 || activeGenre.value !== null
+);
 
-onBeforeUnmount(() => scene?.destroy());
-defineExpose({ refreshLayout: () => scene?.layoutBooks(props.books) });
+async function refresh() { books.value = await fetchBooks(); }
+
+// ...(openAdd, openEdit, handleSubmit tetep sama)...
+
+async function handleMove({ id, status }) {
+  const book = books.value.find((b) => b.id === id);
+  if (!book) return;
+  try {
+    await updateBook(id, { ...book, status });
+    await refresh();
+  } catch (e) {
+    console.error("Gagal memindahkan buku:", e);
+    alert("Gagal memindahkan buku. Cek apakah server backend sedang berjalan.");
+    libraryRef.value?.refreshLayout();
+  }
+}
+
+// ...(sisanya: toasts, requestDelete, finalizeDelete, undoDelete tetep sama)...
 </script>
-
-<style scoped>
-.scene-container { position: relative; width: 100%; height: 100vh; }
-.shelf-empty-label { position: absolute; transform: translate(-50%, -100%); text-align: center; pointer-events: none; color: #6e6e73; font-size: 0.8rem; line-height: 1.4; }
-.bounce-arrow { display: inline-block; font-size: 1.4rem; animation: bounce 1.2s ease-in-out infinite; }
-@keyframes bounce { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(6px); } }
-.dashboard-anchor { position: absolute; transform: translate(-50%, -50%); pointer-events: auto; }
-</style>

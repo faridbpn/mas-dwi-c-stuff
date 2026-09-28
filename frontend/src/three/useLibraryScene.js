@@ -94,7 +94,7 @@ export function useLibraryScene({
     scene.add(grass.mesh);
 
     leaves = createFallingLeaves(40);
-    scene.add(leaves.mesh);
+    leaves.meshes.forEach(m => scene.add(m));
 
     dayNightCycle = createDayNightCycle({
       scene,
