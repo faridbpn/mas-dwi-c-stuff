@@ -1,22 +1,65 @@
-export function applyHighlightState(mesh, { isMatch, active }) {
-  const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+import { ref, onMounted, onBeforeUnmount } from "vue";
 
-  materials.forEach((m) => {
-    if (!active || isMatch) {
-      // gak ada filter aktif, ATAU buku ini cocok -> tampil solid + glow tipis kalau match
-      m.transparent = false;
-      m.opacity = 1;
-      m.depthWrite = true;
-      if (m.emissive) m.emissive.setHex(active ? 0xffd76a : 0x000000);
-      if (m.emissiveIntensity !== undefined) m.emissiveIntensity = active ? 0.5 : 0;
-    } else {
-      // filter aktif TAPI buku ini gak cocok -> redupin, transparan
-      m.transparent = true;
-      m.opacity = 0.15;
-      m.depthWrite = false;
-      if (m.emissive) m.emissive.setHex(0x000000);
-      if (m.emissiveIntensity !== undefined) m.emissiveIntensity = 0;
+const MUTE_KEY = "bgm-muted";
+const VOLUME_KEY = "bgm-volume";
+
+export function useBackgroundMusic(url, { volume: defaultVolume = 0.35 } = {}) {
+  const audio = new Audio(url);
+  audio.loop = true;
+  audio.preload = "auto";
+
+  const isMuted = ref(localStorage.getItem(MUTE_KEY) === "true");
+
+  const storedVolume = localStorage.getItem(VOLUME_KEY);
+  const volume = ref(storedVolume !== null ? Number(storedVolume) : defaultVolume);
+
+  audio.muted = isMuted.value;
+  audio.volume = volume.value;
+
+  function tryPlay() {
+    audio.play().catch(() => {});
+  }
+
+  function unlockOnFirstInteraction() {
+    tryPlay();
+    window.removeEventListener("pointerdown", unlockOnFirstInteraction);
+    window.removeEventListener("keydown", unlockOnFirstInteraction);
+  }
+
+  function toggleMute() {
+    isMuted.value = !isMuted.value;
+    audio.muted = isMuted.value;
+    localStorage.setItem(MUTE_KEY, String(isMuted.value));
+    if (!isMuted.value) tryPlay();
+  }
+
+  // BARU
+  function setVolume(v) {
+    const clamped = Math.min(1, Math.max(0, v));
+    volume.value = clamped;
+    audio.volume = clamped;
+    localStorage.setItem(VOLUME_KEY, String(clamped));
+
+    // kalau volume dinaikin dari slider sementara lagi ke-mute, otomatis unmute
+    // -- lebih intuitif daripada user geser slider tapi kok gak kedengeran sama sekali
+    if (clamped > 0 && isMuted.value) {
+      isMuted.value = false;
+      audio.muted = false;
+      localStorage.setItem(MUTE_KEY, "false");
     }
-    m.needsUpdate = true; // WAJIB, biar perubahan `transparent` ke-apply ulang ke shader
+  }
+
+  onMounted(() => {
+    tryPlay();
+    window.addEventListener("pointerdown", unlockOnFirstInteraction);
+    window.addEventListener("keydown", unlockOnFirstInteraction);
   });
+
+  onBeforeUnmount(() => {
+    audio.pause();
+    window.removeEventListener("pointerdown", unlockOnFirstInteraction);
+    window.removeEventListener("keydown", unlockOnFirstInteraction);
+  });
+
+  return { isMuted, toggleMute, volume, setVolume }; // volume & setVolume baru
 }

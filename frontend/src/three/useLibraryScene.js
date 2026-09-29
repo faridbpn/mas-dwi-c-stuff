@@ -42,7 +42,7 @@ export function useLibraryScene({
   let birds = null;
   let leaves = null;
   let grass = null;
-  let highlightMachedIds = new Set();
+  let highlightMatchedIds = new Set();
   let highlightActive = false;
 
   let draggingMesh = null;
@@ -412,9 +412,9 @@ export function useLibraryScene({
   }
 
   function updateHighlight(matchedIds, active) {
-    highlightMachedIds = matchedIds;
+    highlightMatchedIds = matchedIds;
     highlightActive = active;
-    applyHighlightState();
+    applyHighlightToAll();
   }
 
   function onResize() {

@@ -52,28 +52,43 @@
   <ToastStack :toasts="toasts" @action="undoDelete" />
 
   <button
+    class="settings-toggle"
+    @click="showSettings = true"
+    title="Pengaturan"
+  >⚙️</button>
+
+  <button
     class="music-toggle"
     @click="toggleMute"
     :title="isMuted ? 'Nyalain musik' : 'Matiin musik'"
   >
     {{ isMuted ? "🔇" : "🎵" }}
   </button>
+
+  <SettingsPanel
+    :show="showSettings"
+    :volume="volume"
+    @close="showSettings = false"
+    @update:volume="setVolume"
+  />
 </template>
 
 <script setup>
 import { useBackgroundMusic } from "./composables/useBackgroundMusic";
-const { isMuted, toggleMute } = useBackgroundMusic("/music/bgm.mp3", { volume: 0.3 });
+const { isMuted, toggleMute, volume, setVolume } = useBackgroundMusic("/music/bgm.mp3", { volume: 0.3 });
 import { ref, computed, onMounted } from "vue";
 import LoadingScreen from "./components/LoadingScreen.vue";
 import LibraryScene from "./components/LibraryScene.vue";
 import BookFormModal from "./components/BookFormModal.vue";
 import ToastStack from "./components/ToastStack.vue";
+import SettingsPanel from "./components/SettingsPanel.vue";
 import { fetchBooks, createBook, updateBook, deleteBook } from "./api/books";
 
 const books = ref([]);
 const loadingScreenRef = ref(null);
 const initialLoading = ref(true);
 const showModal = ref(false);
+const showSettings = ref(false);
 const activeBook = ref({ title: "", author: "", year: null, status: "mau_dibaca", genre: "", rating: 0, notes: "" });
 const libraryRef = ref(null);
 
@@ -271,10 +286,26 @@ body {
   opacity: 0;
 }
 
-.music-toggle {
+.settings-toggle {
   position: fixed;
   top: 20px;
   right: 24px;
+  z-index: 15;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(10px);
+  font-size: 1.2rem;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
+}
+
+.music-toggle {
+  position: fixed;
+  top: 20px;
+  right: 76px; /* GESER dari 24px, biar gak numpuk sama tombol settings */
   z-index: 15;
   width: 44px;
   height: 44px;
