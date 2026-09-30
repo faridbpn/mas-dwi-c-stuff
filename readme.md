@@ -115,16 +115,20 @@ Bebas digunakan dan dikembangkan untuk keperluan belajar maupun portofolio priba
 
 Confetti pas selesai baca (#9) — effort kecil, reward psikologis instan.
 
-🚀Siklus siang-malam (#1) — abis ada toggle kualitas, ini polesan atmosfer paling gede dampaknya buat effort yang dikeluarin.
 
-🚀Kunang-kunang pas malam — partikel kecil kuning-hijau melayang di sekitar bukit kalau lagi mode "malam" (nyambung sama ide #1). Murah secara render (THREE.Points, puluhan titik doang).
 
-🚀Burung terbang di kejauhan — beberapa segitiga low-poly kecil yang gerak dalam pola lengkung di langit, sekadar biar scene kerasa "hidup" dari kejauhan tanpa nambah beban berarti.
+[]Sound effect kontekstual — "thud" pelan pas buku nempel ke rak, "crash" pas kena sampah (nyambung ke shatter animation yang udah ada), "swoosh" pas kamera auto-orbit mulai jalan. Audio pendek (<1 detik), sama kayak BGM tapi instance Audio terpisah yang di-play() sesuai event, bukan loop.
 
-Sound effect kontekstual — "thud" pelan pas buku nempel ke rak, "crash" pas kena sampah (nyambung ke shatter animation yang udah ada), "swoosh" pas kamera auto-orbit mulai jalan. Audio pendek (<1 detik), sama kayak BGM tapi instance Audio terpisah yang di-play() sesuai event, bukan loop.
-
-🚀Daun gugur / partikel debu kena cahaya matahari — sempet gue singgung di pesan sebelumnya, partikel jatuh pelan (~40 titik), murah tapi dampak atmosfer-nya berasa. mungkin dibuat daun terbang gitu dan kita perlu nambahin rumput2 yang ketiup angin juga berarti
-
-Highlight buku yang match hasil search — daripada buku yang gak cocok search-nya "ilang" total dari rak (perilaku sekarang), alternatifnya: buku yang gak match diredupin/transparan, yang match tetep solid + glow tipis. Kesannya lebih "browsing perpustakaan", bukan filter keras.
+[]Highlight buku yang match hasil search — daripada buku yang gak cocok search-nya "ilang" total dari rak (perilaku sekarang), alternatifnya: buku yang gak match diredupin/transparan, yang match tetep solid + glow tipis. Kesannya lebih "browsing perpustakaan", bukan filter keras.
 
 better graphics
+
+[done]new map pantai
+
+[]switch map
+
+[]3d object yang bisa interaksi
+
+[]kraken ester egg map pantai
+
+[]awan realistis gerak
