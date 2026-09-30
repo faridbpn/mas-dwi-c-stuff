@@ -7,19 +7,9 @@ import {
   createShelfMesh,
   createTrashMesh,
 } from "./shelfFactory";
-import { createDayNightCycle } from "./dayNight";
 import { loadDecorModel } from "./decorFactory";
-import {
-  createTerrain,
-  createSky,
-  createMountains,
-  setupOutdoorLighting,
-} from "./environment";
-import { createFireflies } from "./fireflies";
-import { createBirdFlock } from "./birds";
-import { createFallingLeaves } from "./leaves";
-import { createGrass } from "./grass";
 import { applyHighlightState } from "./bookHighlight";
+import { ENVIRONMENTS, DEFAULT_ENVIRONMENT } from "./environments/registry";
 
 export function useLibraryScene({
   onMoveBook,
@@ -27,6 +17,7 @@ export function useLibraryScene({
   onEditBook,
   onShelfLabelsUpdate,
   onBoardAnchorUpdate,
+  environmentId = DEFAULT_ENVIRONMENT, // BARU
 }) {
   let renderer, scene, camera, controls, raycaster, pointer;
   let animationId = null;
@@ -36,23 +27,26 @@ export function useLibraryScene({
   const bookMeshes = new Map();
   const shelfGroups = [];
   let trashGroup = null;
-  let dayNightCycle = null;
   const shelfCounts = {};
-  let fireflies = null;
-  let birds = null;
-  let leaves = null;
-  let grass = null;
-  let highlightMachedIds = new Set();
+  let currentEnvironment = null; // BARU
+  let highlightMatchedIds = new Set();
   let highlightActive = false;
 
   let draggingMesh = null;
   let lastInteractionAt = performance.now();
-  const IDLE_THRESHOLD_MS = 15000; // <- balikin ke 15 detik (atau sesuai selera lo)
+  const IDLE_THRESHOLD_MS = 15000;
   let dragPlane = null;
   let pointerDownPos = { x: 0, y: 0 };
   const shards = [];
   let frameCount = 0;
-  const clock = new THREE.Clock(); // <- FIX: cukup 1 kali, ditaruh di sini biar rapi
+  const clock = new THREE.Clock();
+
+  // BARU: 1 pintu buat bikin/ganti environment
+  function buildEnvironment(id) {
+    currentEnvironment?.dispose?.();
+    const def = ENVIRONMENTS[id] ?? ENVIRONMENTS[DEFAULT_ENVIRONMENT];
+    currentEnvironment = def.create(scene, renderer);
+  }
 
   function init(el) {
     container = el;
@@ -77,32 +71,9 @@ export function useLibraryScene({
     controls.enableDamping = true;
     controls.maxPolarAngle = Math.PI / 2.05;
 
-    const sky = createSky();
-    scene.add(sky);
-    scene.fog = new THREE.FogExp2(0xbcdcff, 0.018);
-
-    const { hemi, sun } = setupOutdoorLighting(scene, renderer);
-    scene.add(createTerrain());
-    scene.add(createMountains());
-    fireflies = createFireflies(45);
-    scene.add(fireflies.points);
-
-    birds = createBirdFlock(12); // tambah dari 6 jadi 12 burung
-    scene.add(birds.group);
-
-    grass = createGrass(2500);
-    scene.add(grass.mesh);
-
-    leaves = createFallingLeaves(40);
-    leaves.meshes.forEach(m => scene.add(m));
-
-    dayNightCycle = createDayNightCycle({
-      scene,
-      sky,
-      sun,
-      hemi,
-      cycleDurationSeconds: 180,
-    });
+    // BARU: sky, fog, lighting, terrain, mountains, dayNight, fireflies,
+    // birds, grass, leaves semuanya sekarang diurus environment
+    buildEnvironment(environmentId);
 
     SHELF_CONFIG.forEach((cfg) => {
       const shelf = createShelfMesh(cfg);
@@ -131,15 +102,17 @@ export function useLibraryScene({
     raycaster = new THREE.Raycaster();
     pointer = new THREE.Vector2();
 
-    renderer.domElement.addEventListener("wheel", () => {
-      lastInteractionAt = performance.now();
-    });
+    renderer.domElement.addEventListener("wheel", onWheel);
     renderer.domElement.addEventListener("pointerdown", onPointerDown);
     renderer.domElement.addEventListener("pointermove", onPointerMove);
     renderer.domElement.addEventListener("pointerup", onPointerUp);
     window.addEventListener("resize", onResize);
 
     animate();
+  }
+
+  function onWheel() {
+    lastInteractionAt = performance.now();
   }
 
   function updatePointer(event) {
@@ -161,7 +134,6 @@ export function useLibraryScene({
     trashGroup.userData.body.material.color.set(trashGroup.userData.baseColor);
   }
 
-  // FIX: cuma SATU versi projectToScreen, yang ada `inFront`-nya
   function projectToScreen(object3D, yOffset = 1.6) {
     const worldPos = new THREE.Vector3(0, yOffset, 0).applyMatrix4(
       object3D.matrixWorld,
@@ -179,22 +151,14 @@ export function useLibraryScene({
     };
   }
 
-  // FIX: cuma SATU versi animate, gabungan idle motion + auto-orbit + label update
   function animate() {
     animationId = requestAnimationFrame(animate);
 
     const delta = clock.getDelta();
     const elapsed = clock.getElapsedTime();
 
-    const { isNight } = dayNightCycle.update(elapsed);
-
-    fireflies.update(elapsed);
-    birds.update(elapsed);
-    fireflies.points.visible = isNight;
-    birds.group.visible = true;
-
-    grass.update(elapsed);
-    leaves.update(elapsed, delta);
+    // BARU: 1 baris ngurusin semua animasi environment
+    currentEnvironment?.update(elapsed, delta);
 
     updateShards(delta);
     updateIdleMotion(elapsed);
@@ -412,9 +376,15 @@ export function useLibraryScene({
   }
 
   function updateHighlight(matchedIds, active) {
-    highlightMachedIds = matchedIds;
+    highlightMatchedIds = matchedIds;
     highlightActive = active;
-    applyHighlightState();
+    applyHighlightToAll();
+  }
+
+  // BARU: dipake fitur map-selection nanti
+  function switchEnvironment(id) {
+    if (!scene) return; // belum init
+    buildEnvironment(id);
   }
 
   function onResize() {
@@ -427,13 +397,16 @@ export function useLibraryScene({
   function destroy() {
     cancelAnimationFrame(animationId);
     window.removeEventListener("resize", onResize);
+    renderer.domElement.removeEventListener("wheel", onWheel);
     renderer.domElement.removeEventListener("pointerdown", onPointerDown);
     renderer.domElement.removeEventListener("pointermove", onPointerMove);
     renderer.domElement.removeEventListener("pointerup", onPointerUp);
+    currentEnvironment?.dispose?.();
+    currentEnvironment = null;
     bookMeshes.forEach(disposeBookMesh);
     renderer.dispose();
     container?.removeChild(renderer.domElement);
   }
 
-  return { init, layoutBooks, updateHighlight, destroy };
+  return { init, layoutBooks, updateHighlight, switchEnvironment, destroy };
 }
