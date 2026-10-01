@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { createSky } from "../environment";
 import { createBirdFlock } from "../birds";
+import { createKraken } from "../kraken";
 
 const FLAT_RADIUS = 9;
 const ISLAND_RADIUS = 16;
@@ -489,16 +490,41 @@ export const beachEnvironment = {
     scene.add(birds.group);
     birds.group.visible = true;
 
+    // ---- KRAKEN ----
+    // Spawn di radius 28-42: di situ dasar laut sudah dalam (~2-3 unit) dan
+    // alpha air hampir opak, jadi kraken yang "tenggelam" benar-benar hilang dari pandangan.
+    const kraken = createKraken({
+      waterY: WATER_LEVEL,
+      targetSize: 7,
+      center: [0, 0],
+      radiusRange: [28, 42],
+      angleRange: [Math.PI * 0.15, Math.PI * 0.85], // sempitkan/ubah sesuai posisi kamera
+      hiddenRange: [8, 20],
+      lurkRange: [4, 8],
+      riseDuration: 3,
+      diveDuration: 2.5,
+      surfaceSubmerge: 0.45,
+      facingOffset: 0, // coba Math.PI kalau kraken membelakangi pulau
+    });
+    // Ocean itu transparent + depthWrite:false. Supaya riak air (transparent juga)
+    // selalu digambar SETELAH ocean dan tidak tertutup, naikkan renderOrder-nya.
+    kraken.group.traverse((o) => {
+      if (o.isMesh && o.material.transparent) o.renderOrder = 2;
+    });
+    scene.add(kraken.group);
+
     return {
       update(elapsed) {
         sand.update(elapsed);  // uTime: caustics + swash pasir basah
         ocean.update(elapsed); // uTime: gelombang
         birds.update(elapsed);
+        kraken.update(elapsed);
       },
       dispose() {
-        scene.remove(sky, sand.mesh, ocean.mesh, birds.group, hemi, sun);
+        scene.remove(sky, sand.mesh, ocean.mesh, birds.group, hemi, sun, kraken.group);
         sand.dispose();
         ocean.dispose();
+        kraken.dispose();
         scene.fog = null;
       },
     };
