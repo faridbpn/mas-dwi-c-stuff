@@ -7,7 +7,7 @@ import {
   createShelfMesh,
   createTrashMesh,
 } from "./shelfFactory";
-import { loadDecorModel } from "./decorFactory";
+import { loadDecorModel } from "./statue";
 import { applyHighlightState } from "./bookHighlight";
 import { ENVIRONMENTS, DEFAULT_ENVIRONMENT } from "./environments/registry";
 

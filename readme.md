@@ -94,7 +94,7 @@ Buka URL yang muncul di terminal (biasanya `http://localhost:5173`).
 - [ ] **AI Assistant Integration** — command berbasis teks/suara untuk operasi CRUD
 
 ## 📝 next update plan
-kasih background
+kasih backgroundj
 kasih musik latar yang bisa dipilih2
 add idle animation dll
 
@@ -129,6 +129,6 @@ better graphics
 
 []3d object yang bisa interaksi
 
-[]kraken ester egg map pantai
+[done]kraken ester egg map pantai
 
 []awan realistis gerak
