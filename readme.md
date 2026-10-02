@@ -129,6 +129,6 @@ better graphics
 
 []3d object yang bisa interaksi
 
-[]kraken ester egg map pantai
+[done]kraken ester egg map pantai
 
 []awan realistis gerak

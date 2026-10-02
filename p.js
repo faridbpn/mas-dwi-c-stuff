@@ -1,532 +1,360 @@
-import * as THREE from "three";
-import { createSky } from "../environment";
-import { createBirdFlock } from "../birds";
-import { createKraken } from "../kraken";
+;import * as THREE from 'three';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 
-const FLAT_RADIUS = 9;
-const ISLAND_RADIUS = 16;
-const WATER_LEVEL = -0.35;
-const SEABED_DEPTH = -3.2;
+const MODEL_URL = '/models/kraken/scene.gltf';
+const loader = new GLTFLoader();
 
-// Kalkulasi profil tinggi pulau & dasar laut
-// CATATAN: kalau fungsi ini diubah, ubah juga versi GLSL-nya (SAND_HEIGHT_GLSL di bawah)
-function sandHeight(x, z) {
-  const dist = Math.sqrt(x * x + z * z);
-  if (dist <= FLAT_RADIUS) return 0;
+const HIDDEN = 'hidden';
+const TELEGRAPH = 'telegraph'; // BARU: gelembung muncul dulu, bikin tegang sebelum nongol
+const RISING = 'rising';
+const LURKING = 'lurking';
+const DIVING = 'diving';
 
-  // Landasan pulau ke bibir pantai
-  if (dist < ISLAND_RADIUS) {
-    const t = (dist - FLAT_RADIUS) / (ISLAND_RADIUS - FLAT_RADIUS);
-    const dune = Math.sin(x * 0.4) * Math.cos(z * 0.35) * 0.08;
-    return -t * t * 0.9 + dune * (1.0 - t);
-  }
+const rand = (min, max) => min + Math.random() * (max - min);
+const randRange = ([min, max]) => rand(min, max);
+const easeInCubic = (t) => t * t * t;
 
-  // Dasar laut: makin ke luar makin dalam + kontur terumbu/gundukan pasir laut
-  // Kontur di-fade-in perlahan supaya tidak ada "tangga" di tepi pulau
-  const seaT = Math.min(1.0, (dist - ISLAND_RADIUS) / 25.0);
-  const fadeIn = THREE.MathUtils.smoothstep(seaT, 0.0, 0.5);
-  const seabedContour = Math.sin(x * 0.2) * Math.cos(z * 0.2) * 0.3
-                      + Math.sin(x * 0.08 + z * 0.1) * 0.5;
-  return THREE.MathUtils.lerp(-0.9, SEABED_DEPTH, seaT) + seabedContour * fadeIn;
+// BARU: overshoot -> naiknya "kelewatan dikit" lalu settle balik,
+// ngasih kesan momentum/beban, bukan gerak robotik rata
+function easeOutBack(t) {
+  const c1 = 1.4;
+  const c3 = c1 + 1;
+  return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2);
 }
 
-// Port GLSL dari sandHeight() di atas. Konstanta diambil dari JS supaya selalu sinkron.
-const SAND_HEIGHT_GLSL = `
-  const float FLAT_R = ${FLAT_RADIUS.toFixed(1)};
-  const float ISLAND_R = ${ISLAND_RADIUS.toFixed(1)};
-  const float SEABED = ${SEABED_DEPTH.toFixed(1)};
-
-  float sandHeight(vec2 p) {
-    float dist = length(p);
-    if (dist <= FLAT_R) return 0.0;
-    if (dist < ISLAND_R) {
-      float t = (dist - FLAT_R) / (ISLAND_R - FLAT_R);
-      float dune = sin(p.x * 0.4) * cos(p.y * 0.35) * 0.08;
-      return -t * t * 0.9 + dune * (1.0 - t);
-    }
-    float seaT = min(1.0, (dist - ISLAND_R) / 25.0);
-    float fadeIn = smoothstep(0.0, 0.5, seaT);
-    float contour = sin(p.x * 0.2) * cos(p.y * 0.2) * 0.3
-                  + sin(p.x * 0.08 + p.y * 0.1) * 0.5;
-    return mix(-0.9, SEABED, seaT) + contour * fadeIn;
-  }
-`;
-
-/* ---------------------------------------------------------------------------
-   SAND & SEABED SHADERS (caustics jaring-jaring + pasir basah + fog)
---------------------------------------------------------------------------- */
-
-const SAND_VERTEX = `
-  varying vec3 vWorldPos;
-  varying vec3 vNormal;
-  varying vec3 vColor;
-
-  void main() {
-    vColor = color;
-    vec4 worldPos = modelMatrix * vec4(position, 1.0);
-    vWorldPos = worldPos.xyz;
-
-    vNormal = normalize(mat3(modelMatrix) * normal);
-
-    gl_Position = projectionMatrix * viewMatrix * worldPos;
-  }
-`;
-
-const SAND_FRAGMENT = `
-  uniform float uTime;
-  uniform vec3 uSunDir;
-  uniform vec3 uSunColor;
-  uniform float uWaterLevel;
-  uniform vec3 uFogColor;
-  uniform float uFogDensity;
-
-  varying vec3 vWorldPos;
-  varying vec3 vNormal;
-  varying vec3 vColor;
-
-  vec2 hash22(vec2 p) {
-    float n = sin(dot(p, vec2(41.1, 289.4))) * 43758.5453123;
-    return fract(vec2(n, n * 0.723));
-  }
-
-  // Perlin-like noise untuk smooth caustics pattern
-  float smoothNoise(vec2 uv) {
-    vec2 pi = floor(uv);
-    vec2 pf = fract(uv);
-    vec2 u = pf * pf * (3.0 - 2.0 * pf); // smoothstep
-    
-    float n00 = dot(hash22(pi + vec2(0.0, 0.0)), pf - vec2(0.0, 0.0));
-    float n10 = dot(hash22(pi + vec2(1.0, 0.0)), pf - vec2(1.0, 0.0));
-    float n01 = dot(hash22(pi + vec2(0.0, 1.0)), pf - vec2(0.0, 1.0));
-    float n11 = dot(hash22(pi + vec2(1.0, 1.0)), pf - vec2(1.0, 1.0));
-    
-    float nx0 = mix(n00, n10, u.x);
-    float nx1 = mix(n01, n11, u.x);
-    return mix(nx0, nx1, u.y);
-  }
-
-  // Multi-layer FBM untuk caustics yang flowing dan organic
-  float causticsFlow(vec2 uv, float time) {
-    float value = 0.0;
-    float amplitude = 1.0;
-    float frequency = 1.0;
-    float maxValue = 0.0;
-    
-    for (int i = 0; i < 4; i++) {
-      value += amplitude * smoothNoise(uv * frequency + vec2(time * 0.15, time * 0.1));
-      maxValue += amplitude;
-      amplitude *= 0.5;
-      frequency *= 2.0;
-    }
-    
-    return value / maxValue;
-  }
-
-  void main() {
-    vec3 N = normalize(vNormal);
-    vec3 L = normalize(uSunDir);
-
-    // Pasir basah mengikuti swash (maju-mundurnya air di bibir pantai)
-    float swash = sin(uTime * 1.2) * 0.5 + sin(uTime * 2.1) * 0.25;
-    float above = vWorldPos.y - uWaterLevel;
-    float wet = (1.0 - smoothstep(0.0, 0.15, above - swash * 0.06))
-              * smoothstep(-1.0, -0.2, above);
-    vec3 baseCol = vColor * mix(1.0, 0.75, wet);
-
-    // Diffuse & ambient
-    float diff = max(dot(N, L), 0.0);
-    vec3 ambient = vec3(0.5, 0.55, 0.6) * baseCol;
-    vec3 direct = uSunColor * baseCol * diff * 0.9;
-    vec3 color = ambient + direct;
-
-    // CAUSTICS: hanya di dasar yang terendam, memudar halus di tepi air
-    float depth = max(uWaterLevel - vWorldPos.y, 0.0);
-    float shoreFade = smoothstep(0.0, 0.15, depth);
-
-    if (shoreFade > 0.0) {
-      // Geser UV sedikit sesuai arah matahari (kesan cahaya diproyeksikan menembus air)
-      vec2 cuv = vWorldPos.xz - uSunDir.xz * depth * 0.5;
-
-      float flow = causticsFlow(cuv * 0.8, uTime);
-      float caustics = sin(flow * 3.14159 + uTime * 0.5) * 0.5 + 0.5;
-      caustics = pow(caustics, 2.0) * (1.0 - abs(flow) * 0.3);
-
-      float depthFade = exp(-depth * 1.2);
-
-      vec3 causticsColor = vec3(0.45, 0.95, 0.9) * caustics * depthFade * shoreFade * 1.2;
-      color += causticsColor * max(dot(N, vec3(0.0, 1.0, 0.0)), 0.2);
-    }
-
-    // FOG (konsisten dengan laut)
-    float distToCam = length(cameraPosition - vWorldPos);
-    float fogAmount = 1.0 - exp(-uFogDensity * uFogDensity * distToCam * distToCam);
-    color = mix(color, uFogColor, clamp(fogAmount, 0.0, 1.0));
-
-    gl_FragColor = vec4(color, 1.0);
-  }
-`;
-
-function createSandIsland(sunPosition, fogColor, fogDensity) {
-  // Bidang pasir & dasar laut diperluas agar tidak menggantung di horizon
-  const geometry = new THREE.PlaneGeometry(120, 120, 120, 120);
-  const pos = geometry.attributes.position;
-  const colors = [];
-  const dry = new THREE.Color(0xe8d9b0);
-  const wet = new THREE.Color(0xb29255);
-  const deepBed = new THREE.Color(0x7a835a); // Warna terumbu/lumpur dasar laut dalam
-
-  for (let i = 0; i < pos.count; i++) {
-    const x = pos.getX(i);
-    const z = pos.getY(i);
-    const h = sandHeight(x, z);
-    if (!isFinite(h)) console.warn(`[Sand] Invalid height at (${x}, ${z}): ${h}`);
-    pos.setZ(i, h);
-
-    // Gradasi Warna Pasir: Kering -> Basah -> Dasar Laut Dalam
-    const c = dry.clone();
-    if (h < 0.0) {
-      const wetness = THREE.MathUtils.clamp(-h / 1.0, 0, 1);
-      c.lerp(wet, wetness);
-    }
-    if (h < WATER_LEVEL) {
-      const deepness = THREE.MathUtils.clamp((WATER_LEVEL - h) / 2.5, 0, 1);
-      c.lerp(deepBed, deepness * 0.45);
-    }
-
-    colors.push(c.r, c.g, c.b);
-  }
-
-  geometry.computeVertexNormals();
-  geometry.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
-
-  const material = new THREE.ShaderMaterial({
-    uniforms: {
-      uTime: { value: 0 },
-      uSunDir: { value: sunPosition.clone().normalize() },
-      uSunColor: { value: new THREE.Color(0xfff6dc) },
-      uWaterLevel: { value: WATER_LEVEL },
-      uFogColor: { value: new THREE.Color(fogColor) },
-      uFogDensity: { value: fogDensity },
-    },
-    vertexShader: SAND_VERTEX,
-    fragmentShader: SAND_FRAGMENT,
-    vertexColors: true,
-  });
-
-  const mesh = new THREE.Mesh(geometry, material);
-  mesh.rotation.x = -Math.PI / 2;
-  mesh.receiveShadow = true;
-
-  return {
-    mesh,
-    update(elapsed) {
-      material.uniforms.uTime.value = elapsed;
-    },
-    dispose() {
-      geometry.dispose();
-      material.dispose();
-    },
-  };
-}
-
-/* ---------------------------------------------------------------------------
-   OCEAN SHADERS (depth asli, swell, Jacobian foam, refleksi langit, fog)
---------------------------------------------------------------------------- */
-
-const OCEAN_VERTEX = `
-  uniform float uTime;
-  varying vec3 vWorldPos;
-  varying vec3 vNormal;
-  varying float vHeight;
-  varying float vJac;
-  varying vec2 vUv;
-
-  const float GRAVITY = 9.8;
-  const float SPEED_SCALE = 0.7;
-
-  void gerstner(vec2 p, vec2 dir, float q, float L, float A,
-                inout vec3 disp, inout vec3 T, inout vec3 B) {
-    float k = 6.28318530718 / L;
-    float w = sqrt(GRAVITY * k) * SPEED_SCALE;
-    vec2 d = normalize(dir);
-
-    float phase = k * dot(d, p) - w * uTime;
-    float c = cos(phase);
-    float s = sin(phase);
-
-    disp.xy += (q / k) * d * c;
-    disp.z  += A * s;
-
-    T += vec3(-q * d.x * d.x * s,
-              -q * d.x * d.y * s,
-               d.x * k * A * c);
-    B += vec3(-q * d.x * d.y * s,
-              -q * d.y * d.y * s,
-               d.y * k * A * c);
-  }
-
-  void main() {
-    vUv = uv;
-    vec3 disp = vec3(0.0);
-    vec3 T = vec3(1.0, 0.0, 0.0);
-    vec3 B = vec3(0.0, 1.0, 0.0);
-
-    gerstner(position.xy, vec2( 1.0, 0.2), 0.35, 26.0, 0.20, disp, T, B);
-    gerstner(position.xy, vec2( 0.5, 1.0), 0.25, 14.0, 0.10, disp, T, B);
-    gerstner(position.xy, vec2(-0.7, 0.6), 0.15,  8.0, 0.04, disp, T, B);
-    // Swell panjang supaya permukaan tidak terlihat rata dari jauh
-    gerstner(position.xy, vec2( 0.8,-0.3), 0.12, 60.0, 0.35, disp, T, B);
-
-    // Ombak diredam mendekati pulau (shoaling) -> tidak "membanjiri" pasir
-    float damp = smoothstep(8.0, 22.0, length(position.xy));
-    disp *= damp;
-    T = mix(vec3(1.0, 0.0, 0.0), T, damp);
-    B = mix(vec3(0.0, 1.0, 0.0), B, damp);
-
-    vec3 displaced = position + disp;
-
-    vec3 localNormal = normalize(cross(T, B));
-    vNormal = normalize(mat3(modelMatrix) * localNormal);
-
-    // Jacobian: <1 berarti permukaan "menumpuk" (puncak ombak mau pecah)
-    vJac = T.x * B.y - T.y * B.x;
-
-    vHeight = disp.z;
-    vec4 worldPosition = modelMatrix * vec4(displaced, 1.0);
-    vWorldPos = worldPosition.xyz;
-    gl_Position = projectionMatrix * viewMatrix * worldPosition;
-  }
-`;
-
-const OCEAN_FRAGMENT = `
-  uniform float uTime;
-  uniform vec3 uShallowColor;
-  uniform vec3 uDeepColor;
-  uniform vec3 uSkyColor;
-  uniform vec3 uSunColor;
-  uniform vec3 uSunDir;
-  uniform vec3 uFogColor;
-  uniform float uFogDensity;
-
-  varying vec3 vWorldPos;
-  varying vec3 vNormal;
-  varying float vHeight;
-  varying float vJac;
-  varying vec2 vUv;
-
-  ${SAND_HEIGHT_GLSL}
-
-  vec2 hash22(vec2 p) {
-    p = vec2(dot(p, vec2(127.1, 311.7)), dot(p, vec2(269.5, 183.3)));
-    return -1.0 + 2.0 * fract(sin(p) * 43758.5453123);
-  }
-
-  float perlinNoise(vec2 p) {
-    vec2 pi = floor(p);
-    vec2 pf = fract(p);
-    vec2 w = pf * pf * (3.0 - 2.0 * pf);
-
-    return mix(mix(dot(hash22(pi + vec2(0.0, 0.0)), pf - vec2(0.0, 0.0)),
-                   dot(hash22(pi + vec2(1.0, 0.0)), pf - vec2(1.0, 0.0)), w.x),
-               mix(dot(hash22(pi + vec2(0.0, 1.0)), pf - vec2(0.0, 1.0)),
-                   dot(hash22(pi + vec2(1.0, 1.0)), pf - vec2(1.0, 1.0)), w.x), w.y);
-  }
-
-  void main() {
-    vec3 V = normalize(cameraPosition - vWorldPos);
-    vec3 L = normalize(uSunDir);
-    float distToCam = length(cameraPosition - vWorldPos);
-    vec2 posXZ = vWorldPos.xz;
-
-    // 1. MICRO-RIPPLES (memudar di kejauhan agar tidak berkedip/aliasing)
-    vec2 rippleUV1 = posXZ * 1.5 + vec2(uTime * 0.4, uTime * 0.3);
-    vec2 rippleUV2 = posXZ * 3.0 - vec2(uTime * 0.5, -uTime * 0.2);
-
-    float n1 = perlinNoise(rippleUV1);
-    float n2 = perlinNoise(rippleUV2);
-    vec2 microNormal = vec2(n1 + n2) * 0.08;
-    microNormal *= 1.0 - smoothstep(20.0, 80.0, distToCam);
-
-    vec3 N = normalize(vNormal + vec3(microNormal.x, 0.0, microNormal.y));
-
-    // 2. KEDALAMAN AIR SUNGGUHAN (z dibalik karena mesh pasir di-rotate -PI/2)
-    float floorY = sandHeight(vec2(vWorldPos.x, -vWorldPos.z));
-    float depth = max(vWorldPos.y - floorY, 0.0);
-    float clarity = exp(-depth * 0.8);   // 1 = bening/dangkal, 0 = gelap/dalam
-
-    // 3. WARNA DASAR (+ variasi skala besar biar tidak satu warna rata)
-    vec3 baseColor = mix(uDeepColor, uShallowColor, clarity);
-    baseColor *= 0.92 + 0.16 * perlinNoise(posXZ * 0.05);
-    float diffuse = 0.55 + 0.45 * max(dot(N, L), 0.0);
-    vec3 color = baseColor * diffuse;
-
-    // 4. SUBSURFACE SCATTERING
-    float sssFactor = max(0.0, dot(V, -(L + N * 0.4)));
-    sssFactor = pow(sssFactor, 3.0) * smoothstep(-0.05, 0.2, vHeight);
-    color += vec3(0.2, 0.9, 0.7) * sssFactor * 0.6;
-
-    // 5. FRESNEL + REFLEKSI LANGIT (pakai vektor refleksi)
-    float NdotV = max(dot(N, V), 0.0);
-    float fresnel = 0.02 + 0.98 * pow(1.0 - NdotV, 5.0);
-
-    vec3 R = reflect(-V, N);
-    vec3 skyRefl = mix(uFogColor, uSkyColor, pow(clamp(R.y, 0.0, 1.0), 0.6));
-    skyRefl += uSunColor * pow(max(dot(R, L), 0.0), 64.0) * 0.5;   // glow matahari lebar
-    color = mix(color, skyRefl, clamp(fresnel * 0.95, 0.0, 1.0));
-
-    // 6. SPECULAR: lobe tajam + lobe lebar
-    vec3 H = normalize(L + V);
-    float NdotH = max(dot(N, H), 0.0);
-    color += uSunColor * (pow(NdotH, 240.0) * 2.0 + pow(NdotH, 30.0) * 0.25);
-
-    // 7. FOAM
-    // a) Garis buih tipis di ujung air yang maju-mundur, fase beda tiap titik pantai
-    float sw = 0.5 + 0.5 * sin(uTime * 0.9 + perlinNoise(posXZ * 0.35) * 4.0);
-    float band = depth - sw * 0.45;
-    float foamFront = 1.0 - smoothstep(0.0, 0.12, abs(band));
-    // b) Sisa buih di belakang garis depan
-    float foamTrail = 1.0 - smoothstep(0.0, 0.6, depth);
-
-    float foamLace = perlinNoise(posXZ * 3.0 + uTime * 0.15);
-    float lace = smoothstep(-0.1, 0.5, foamLace);
-
-    float foam = clamp(foamFront + foamTrail * 0.4, 0.0, 1.0) * lace;
-
-    // c) Buih di puncak ombak (berbasis Jacobian) - tune angka 0.55 / 0.25 sesuai selera
-    float crestFoam = smoothstep(0.55, 0.25, vJac) * smoothstep(0.3, 0.7, foamLace);
-    foam = clamp(foam + crestFoam * 0.6, 0.0, 1.0);
-
-    color = mix(color, vec3(0.95, 0.98, 1.0), foam);
-
-    // 8. FOG
-    float fogAmount = 1.0 - exp(-uFogDensity * uFogDensity * distToCam * distToCam);
-    color = mix(color, uFogColor, clamp(fogAmount, 0.0, 1.0));
-
-    // 9. ALPHA: bening di dangkal, pekat di dalam, opak di kejauhan (sembunyikan tepi seabed)
-    float alpha = mix(1.0, 0.25, clarity);
-    alpha = max(alpha, smoothstep(30.0, 50.0, length(vWorldPos.xz)));
-    alpha *= smoothstep(0.0, 0.08, depth);
-    alpha = max(alpha, foam * smoothstep(0.0, 0.02, depth));
-
-    gl_FragColor = vec4(color, alpha);
-  }
-`;
-
-function createOcean(sunPosition, skyColor, fogColor, fogDensity) {
-  const geometry = new THREE.PlaneGeometry(400, 400, 256, 256);
-  const material = new THREE.ShaderMaterial({
-    uniforms: {
-      uTime: { value: 0 },
-      uShallowColor: { value: new THREE.Color(0x56e3d9) },
-      uDeepColor: { value: new THREE.Color(0x0e588f) },
-      uSkyColor: { value: new THREE.Color(skyColor) },
-      uSunColor: { value: new THREE.Color(0xfff6dc) },
-      uSunDir: { value: sunPosition.clone().normalize() },
-      uFogColor: { value: new THREE.Color(fogColor) },
-      uFogDensity: { value: fogDensity },
-    },
-    vertexShader: OCEAN_VERTEX,
-    fragmentShader: OCEAN_FRAGMENT,
+/**
+ * Kraken yang muncul acak lalu menyelam lagi.
+ *
+ * @param {Object} opts (lihat opsi lama di versi sebelumnya, ditambah:)
+ * @param {number} opts.telegraphDuration  Lama fase "gelembung tanda-tanda" sebelum nyembul (detik)
+ * @param {number} opts.bubbleCount        Jumlah gelembung pas telegraph
+ * @param {number} opts.splashCount        Jumlah percikan pas nembus permukaan
+ * @param {function} opts.onEvent          Callback(eventName) -> 'telegraph' | 'emerge' | 'dive'
+ *                                         Buat nyambungin sound effect / camera shake dari luar
+ */
+export function createKraken({
+  waterY = 0,
+  targetSize = 7,
+  center = [0, 0],
+  radiusRange = [25, 40],
+  angleRange = [0, Math.PI * 2],
+  hiddenRange = [8, 20],
+  lurkRange = [4, 8],
+  riseDuration = 3,
+  diveDuration = 2.5,
+  surfaceSubmerge = 0.55, // DIUBAH dari 0.45 -> lebih banyak badan tetep kerendem, kesannya lebih "mengintai"
+  facingOffset = 0,
+  telegraphDuration = 1.8, // BARU
+  bubbleCount = 10,        // BARU
+  splashCount = 22,        // BARU
+  onEvent = null,          // BARU
+} = {}) {
+  const group = new THREE.Group();
+  const pivot = new THREE.Group();
+  pivot.visible = false;
+  group.add(pivot);
+
+  // ---------- Riak air (DIPERBESAR, skalanya sekarang ikut targetSize) ----------
+  const rippleGeo = new THREE.RingGeometry(0.8, 1.0, 48);
+  const rippleMat = new THREE.MeshBasicMaterial({
+    color: 0x9fd8c8, // BARU: kehijauan keruh, kesan air "terganggu", bukan putih bersih
     transparent: true,
+    opacity: 0,
+    side: THREE.DoubleSide,
+    depthWrite: false, // FIX: typo lama "deepWrite" -> "depthWrite" (properti itu sebelumnya gak kebaca sama Three.js)
+  });
+  const ripple = new THREE.Mesh(rippleGeo, rippleMat);
+  ripple.rotation.x = -Math.PI / 2;
+  ripple.position.y = waterY + 0.08;
+  ripple.visible = false;
+  group.add(ripple);
+
+  let rippleT = 1;
+  const RIPPLE_DURATION = 2.5;
+  function triggerRipple(strength = 1) {
+    rippleT = 0;
+    ripple.visible = true;
+    ripple.userData.strength = strength; // BARU: ripple pas RISING lebih gede dari pas telegraph
+  }
+
+  // ---------- BARU: pool gelembung (telegraph) ----------
+  const bubbleGeo = new THREE.SphereGeometry(1, 8, 8);
+  const bubbleMat = new THREE.MeshBasicMaterial({
+    color: 0xdfffff,
+    transparent: true,
+    opacity: 0,
     depthWrite: false,
   });
+  const bubbles = [];
+  for (let i = 0; i < bubbleCount; i++) {
+    const mesh = new THREE.Mesh(bubbleGeo, bubbleMat.clone());
+    mesh.visible = false;
+    group.add(mesh);
+    bubbles.push({
+      mesh,
+      active: false,
+      life: 0,
+      duration: 0,
+      offsetX: 0,
+      offsetZ: 0,
+      size: 0.1,
+    });
+  }
 
-  const mesh = new THREE.Mesh(geometry, material);
-  mesh.rotation.x = -Math.PI / 2;
-  mesh.position.y = WATER_LEVEL;
+  function spawnBubbles() {
+    bubbles.forEach((b, i) => {
+      b.active = true;
+      b.life = 0;
+      b.duration = rand(0.8, telegraphDuration);
+      b.offsetX = rand(-1.2, 1.2);
+      b.offsetZ = rand(-1.2, 1.2);
+      b.size = rand(0.08, 0.22) * (targetSize / 7); // skala ngikut ukuran kraken
+      b.mesh.visible = true;
+      b.mesh.material.opacity = 0;
+    });
+  }
+
+  function updateBubbles(delta) {
+    bubbles.forEach((b) => {
+      if (!b.active) return;
+      b.life += delta;
+      const t = Math.min(b.life / b.duration, 1);
+      b.mesh.position.set(
+        b.offsetX,
+        THREE.MathUtils.lerp(waterY - 0.3, waterY + 0.05, t),
+        b.offsetZ
+      );
+      b.mesh.scale.setScalar(b.size * (0.6 + t * 0.4));
+      b.mesh.material.opacity = Math.sin(t * Math.PI) * 0.55; // naik lalu pecah/fade pas nyampe atas
+      if (t >= 1) {
+        b.active = false;
+        b.mesh.visible = false;
+      }
+    });
+  }
+
+  // ---------- BARU: pool percikan air (splash, pas nembus permukaan) ----------
+  const splashGeo = new THREE.SphereGeometry(1, 6, 6);
+  const splashMat = new THREE.MeshBasicMaterial({
+    color: 0xeefcff,
+    transparent: true,
+    opacity: 0,
+    depthWrite: false,
+  });
+  const splashes = [];
+  for (let i = 0; i < splashCount; i++) {
+    const mesh = new THREE.Mesh(splashGeo, splashMat.clone());
+    mesh.visible = false;
+    group.add(mesh);
+    splashes.push({ mesh, active: false, life: 0, velocity: new THREE.Vector3() });
+  }
+
+  function triggerSplash() {
+    const scaleFactor = targetSize / 7;
+    splashes.forEach((s) => {
+      const angle = Math.random() * Math.PI * 2;
+      const speed = rand(1.5, 4) * scaleFactor;
+      s.active = true;
+      s.life = 0;
+      s.mesh.visible = true;
+      s.mesh.position.set(0, waterY, 0);
+      s.mesh.scale.setScalar(rand(0.08, 0.2) * scaleFactor);
+      s.velocity.set(
+        Math.cos(angle) * speed * 0.5,
+        rand(2, 4) * scaleFactor, // dorongan ke atas, kesan "meledak keluar"
+        Math.sin(angle) * speed * 0.5
+      );
+    });
+  }
+
+  function updateSplashes(delta) {
+    splashes.forEach((s) => {
+      if (!s.active) return;
+      s.life += delta;
+      s.velocity.y -= 6 * delta; // gravitasi narik balik ke air
+      s.mesh.position.addScaledVector(s.velocity, delta);
+      s.mesh.material.opacity = Math.max(0, 0.9 - s.life * 1.3);
+      if (s.life > 0.7 || s.mesh.position.y < waterY - 0.5) {
+        s.active = false;
+        s.mesh.visible = false;
+      }
+    });
+  }
+
+  // ---------- State machine ----------
+  let loaded = false;
+  let disposed = false;
+  let mixer = null;
+  let modelHeight = 0;
+
+  let state = HIDDEN;
+  let stateTime = 0;
+  let stateDuration = rand(3, 6);
+  let lastElapsed = null;
+
+  const hiddenY = () => waterY - modelHeight - 0.5;
+  const surfacedY = () => waterY - modelHeight * surfaceSubmerge;
+
+  function pickNewSpot() {
+    const angle = randRange(angleRange);
+    const radius = randRange(radiusRange);
+    const x = center[0] + Math.cos(angle) * radius;
+    const z = center[1] + Math.sin(angle) * radius;
+    group.position.set(x, 0, z);
+    const toCenter = Math.atan2(center[0] - x, center[1] - z);
+    group.rotation.y = toCenter + facingOffset + rand(-0.4, 0.4);
+  }
+
+  function enter(next) {
+    state = next;
+    stateTime = 0;
+
+    if (next === HIDDEN) {
+      pivot.visible = false;
+      stateDuration = randRange(hiddenRange);
+    } else if (next === TELEGRAPH) {
+      // BARU: posisi ditentuin SEKARANG (bukan pas RISING), biar gelembungnya
+      // muncul di titik yang sama persis sama tempat kraken bakal nongol
+      pickNewSpot();
+      stateDuration = telegraphDuration;
+      spawnBubbles();
+      triggerRipple(0.3); // riak kecil dulu, bukan yang gede
+      onEvent?.('telegraph');
+    } else if (next === RISING) {
+      pivot.position.y = hiddenY();
+      pivot.visible = true;
+      stateDuration = riseDuration;
+      triggerRipple(1); // riak BESAR pas beneran nongol
+      triggerSplash();  // BARU
+      onEvent?.('emerge');
+    } else if (next === LURKING) {
+      stateDuration = randRange(lurkRange);
+    } else if (next === DIVING) {
+      stateDuration = diveDuration;
+      triggerRipple(0.7);
+      onEvent?.('dive');
+    }
+  }
+
+  loader.load(
+    MODEL_URL,
+    (gltf) => {
+      if (disposed) {
+        disposeObject(gltf.scene);
+        return;
+      }
+      const model = gltf.scene;
+
+      const rawBox = new THREE.Box3().setFromObject(model);
+      const rawHeight = rawBox.max.y - rawBox.min.y || 1;
+      const scale = targetSize / rawHeight; // FIX dari bug sebelumnya: scaling yang ketinggalan
+      model.scale.setScalar(scale);
+
+      const box = new THREE.Box3().setFromObject(model);
+      const center3 = box.getCenter(new THREE.Vector3());
+      model.position.x -= center3.x;
+      model.position.z -= center3.z;
+      model.position.y -= box.min.y;
+      modelHeight = box.max.y - box.min.y;
+
+      pivot.add(model);
+
+      if (gltf.animations && gltf.animations.length > 0) {
+        mixer = new THREE.AnimationMixer(model);
+        mixer.clipAction(gltf.animations[0]).play();
+      }
+      loaded = true;
+    },
+    undefined,
+    (err) => console.error('Failed to load kraken model', err)
+  );
 
   function update(elapsed) {
-    material.uniforms.uTime.value = elapsed;
+    if (lastElapsed === null) lastElapsed = elapsed;
+    const delta = Math.min(elapsed - lastElapsed, 0.1);
+    lastElapsed = elapsed;
+
+    if (rippleT < 1) {
+      rippleT = Math.min(rippleT + delta / RIPPLE_DURATION, 1);
+      const strength = ripple.userData.strength ?? 1;
+      const sc = (1 + rippleT * 6) * strength;
+      ripple.scale.set(sc, sc, sc);
+      rippleMat.opacity = (1 - rippleT) * 0.5 * strength;
+      if (rippleT >= 1) ripple.visible = false;
+    }
+
+    updateBubbles(delta);   // BARU: jalan terus independen dari state model (biar gak nunggu `loaded`)
+    updateSplashes(delta);  // BARU
+
+    // State HIDDEN & TELEGRAPH tetep jalan walau model BELUM selesai di-load
+    // (biar gelembung/riak tetep bisa nongol duluan sambil nunggu GLTF selesai fetch)
+    stateTime += delta;
+    const t = Math.min(stateTime / stateDuration, 1);
+
+    if (state === HIDDEN) {
+      if (t >= 1) enter(loaded ? TELEGRAPH : HIDDEN); // nunggu model ready sebelum lanjut ke telegraph
+      return;
+    }
+    if (state === TELEGRAPH) {
+      if (t >= 1) enter(RISING);
+      return;
+    }
+
+    if (!loaded) return;
+    if (mixer) mixer.update(delta);
+
+    switch (state) {
+      case RISING:
+        // BARU: easeOutBack -> nongolnya kayak ada "dorongan", bukan gerak rata linear
+        pivot.position.y = THREE.MathUtils.lerp(hiddenY(), surfacedY(), easeOutBack(t));
+        // BARU: goyangan liar pas lagi naik, bukan cuma pas lurking
+        pivot.rotation.z = Math.sin(elapsed * 6) * 0.05 * (1 - t);
+        if (t >= 1) enter(LURKING);
+        break;
+
+      case LURKING:
+        pivot.position.y = surfacedY() + Math.sin(elapsed * 1.2) * 0.15;
+        pivot.rotation.z = Math.sin(elapsed * 0.8) * 0.04;
+        pivot.rotation.y = Math.sin(elapsed * 0.3) * 0.15;
+        if (t >= 1) enter(DIVING);
+        break;
+
+      case DIVING:
+        pivot.position.y = THREE.MathUtils.lerp(surfacedY(), hiddenY(), easeInCubic(t));
+        if (t >= 1) {
+          pivot.rotation.set(0, 0, 0);
+          enter(HIDDEN);
+        }
+        break;
+    }
   }
+
   function dispose() {
-    geometry.dispose();
-    material.dispose();
+    disposed = true;
+    disposeObject(pivot);
+    mixer?.stopAllAction();
+    rippleGeo.dispose();
+    rippleMat.dispose();
+    bubbleGeo.dispose();
+    bubbleMat.dispose();
+    splashGeo.dispose();
+    splashMat.dispose();
   }
-  return { mesh, update, dispose };
+
+  return { group, update, dispose };
 }
 
-function setupBeachLighting(scene) {
-  const hemi = new THREE.HemisphereLight(0xd7f0ff, 0xe8d9b0, 0.9);
-  scene.add(hemi);
-
-  const sun = new THREE.DirectionalLight(0xfff6dc, 1.3);
-  sun.position.set(20, 25, 12);
-  sun.castShadow = true;
-  sun.shadow.mapSize.set(1024, 1024);
-  sun.shadow.camera.left = -20;
-  sun.shadow.camera.right = 20;
-  sun.shadow.camera.top = 20;
-  sun.shadow.camera.bottom = -20;
-  scene.add(sun);
-
-  return { hemi, sun };
+function disposeObject(obj) {
+  obj.traverse((child) => {
+    if (child.geometry) child.geometry.dispose();
+    if (child.material) {
+      const mats = Array.isArray(child.material) ? child.material : [child.material];
+      mats.forEach((m) => {
+        for (const key in m) {
+          if (m[key] && m[key].isTexture) m[key].dispose();
+        }
+        m.dispose();
+      });
+    }
+  });
 }
-
-export const beachEnvironment = {
-  id: "beach",
-  label: "Pulau Pantai",
-  create(scene) {
-    const skyTop = 0x8fd8ff;
-    const sky = createSky();
-    sky.material.uniforms.topColor.value.set(skyTop);
-    sky.material.uniforms.bottomColor.value.set(0xffffff);
-    scene.add(sky);
-
-    const fogColor = 0xf3f7fa;
-    const fogDensity = 0.008;
-    scene.fog = new THREE.FogExp2(fogColor, fogDensity);
-    scene.background = new THREE.Color(fogColor);
-
-    const { hemi, sun } = setupBeachLighting(scene);
-
-    // Arah matahari & fog dikirim ke pasir (caustics + fog konsisten dengan laut)
-    const sand = createSandIsland(sun.position, fogColor, fogDensity);
-    scene.add(sand.mesh);
-
-    const ocean = createOcean(sun.position, skyTop, fogColor, fogDensity);
-    scene.add(ocean.mesh);
-
-    const birds = createBirdFlock(14, { scale: 1.4, radiusRange: [22, 38], heightRange: [10, 18] });
-    scene.add(birds.group);
-    birds.group.visible = true;
-
-    // ---- KRAKEN ----
-    // Spawn di radius 28-42: di situ dasar laut sudah dalam (~2-3 unit) dan
-    // alpha air hampir opak, jadi kraken yang "tenggelam" benar-benar hilang dari pandangan.
-    const kraken = createKraken({
-      waterY: WATER_LEVEL,
-      targetSize: 7,
-      center: [0, 0],
-      radiusRange: [28, 42],
-      angleRange: [Math.PI * 0.15, Math.PI * 0.85], // sempitkan/ubah sesuai posisi kamera
-      hiddenRange: [8, 20],
-      lurkRange: [4, 8],
-      riseDuration: 3,
-      diveDuration: 2.5,
-      surfaceSubmerge: 0.45,
-      facingOffset: 0, // coba Math.PI kalau kraken membelakangi pulau
-    });
-    // Ocean itu transparent + depthWrite:false. Supaya riak air (transparent juga)
-    // selalu digambar SETELAH ocean dan tidak tertutup, naikkan renderOrder-nya.
-    kraken.group.traverse((o) => {
-      if (o.isMesh && o.material.transparent) o.renderOrder = 2;
-    });
-    scene.add(kraken.group);
-
-    return {
-      update(elapsed) {
-        sand.update(elapsed);  // uTime: caustics + swash pasir basah
-        ocean.update(elapsed); // uTime: gelombang
-        birds.update(elapsed);
-        kraken.update(elapsed);
-      },
-      dispose() {
-        scene.remove(sky, sand.mesh, ocean.mesh, birds.group, hemi, sun, kraken.group);
-        sand.dispose();
-        ocean.dispose();
-        kraken.dispose();
-        scene.fog = null;
-      },
-    };
-  },
-};
