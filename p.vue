@@ -22,7 +22,25 @@
           />
         </section>
 
-        <!-- section "Pilih Peta" nanti ditaruh di sini, section baru di bawah ini -->
+        <!-- BARU: section pilih map -->
+        <section class="settings-section">
+          <label class="settings-label">
+            <span>🗺️ Pilih Map</span>
+          </label>
+          <div class="map-list">
+            <button
+              v-for="map in maps"
+              :key="map.id"
+              class="map-card"
+              :class="{ active: map.id === activeMapId }"
+              @click="$emit('select-map', map.id)"
+            >
+              <span class="map-icon">{{ map.icon }}</span>
+              <span class="map-label">{{ map.label }}</span>
+              <span v-if="map.id === activeMapId" class="map-check">✓</span>
+            </button>
+          </div>
+        </section>
       </aside>
     </div>
   </Transition>
@@ -32,8 +50,10 @@
 defineProps({
   show: { type: Boolean, default: false },
   volume: { type: Number, default: 0.35 },
+  maps: { type: Array, default: () => [] },
+  activeMapId: { type: String, default: "" },
 });
-defineEmits(["close", "update:volume"]);
+defineEmits(["close", "update:volume", "select-map"]);
 </script>
 
 <style scoped>
@@ -57,9 +77,10 @@ defineEmits(["close", "update:volume"]);
   padding: 24px;
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 24px;
   color: #1d1d1f;
   animation: slide-in 0.25s ease;
+  overflow-y: auto;
 }
 
 @keyframes slide-in {
@@ -79,7 +100,7 @@ defineEmits(["close", "update:volume"]);
 }
 .close-btn:active { transform: scale(0.9); }
 
-.settings-section { display: flex; flex-direction: column; gap: 8px; }
+.settings-section { display: flex; flex-direction: column; gap: 10px; }
 .settings-label {
   display: flex;
   justify-content: space-between;
@@ -88,6 +109,32 @@ defineEmits(["close", "update:volume"]);
 }
 .volume-value { color: #6e6e73; font-weight: 400; }
 .volume-slider { width: 100%; accent-color: #1d1d1f; cursor: pointer; }
+
+/* BARU */
+.map-list { display: flex; flex-direction: column; gap: 8px; }
+.map-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1.5px solid rgba(0, 0, 0, 0.08);
+  background: rgba(255, 255, 255, 0.6);
+  cursor: pointer;
+  text-align: left;
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: #1d1d1f;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.map-card:active { transform: scale(0.98); }
+.map-card.active {
+  border-color: #1d1d1f;
+  background: rgba(29, 29, 31, 0.06);
+}
+.map-icon { font-size: 1.3rem; }
+.map-label { flex: 1; }
+.map-check { color: #1d1d1f; font-weight: 700; }
 
 .settings-fade-enter-active, .settings-fade-leave-active { transition: opacity 0.2s ease; }
 .settings-fade-enter-from, .settings-fade-leave-to { opacity: 0; }

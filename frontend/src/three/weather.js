@@ -8,6 +8,21 @@ const CLEARING = "clearing";
 const rand = (min, max) => min + Math.random() * (max - min);
 const easeInOut = (t) => t * t * (3 - 2 * t);
 
+/**
+ * Siklus cuaca: tenang <-> badai, dengan hujan + petir + penggelapan dinamis.
+ *
+ * @param {THREE.Scene} scene
+ * @param {THREE.HemisphereLight} hemi
+ * @param {THREE.DirectionalLight} sun
+ * @param {THREE.ShaderMaterial} sandMaterial
+ * @param {THREE.ShaderMaterial} oceanMaterial
+ * @param {THREE.Mesh} sky
+ * @param {Object} clouds -- hasil dari createClouds(), harus punya setStormIntensity(t)
+ * @param {number} waterLevel
+ * @param {Object} calm   -- { fogColor, fogDensity, skyTop, skyBottom, hemiColor, hemiGround, hemiIntensity, sunColor, sunIntensity }
+ * @param {Object} storm  -- bentuk sama persis, versi gelap/badai
+ * @param {function} onEvent -- (name) => void, name: 'thunder' | 'storm-start' | 'storm-end'
+ */
 export function createWeatherSystem({
   scene,
   hemi,
@@ -26,143 +41,75 @@ export function createWeatherSystem({
 } = {}) {
   const group = new THREE.Group();
 
-  // ---------- 1. Hujan (Rain Droplets) ----------
-  const RAIN_COUNT = 1200; // Ditingkatkan agar lebih padat
-  const AREA = 80;
-  const rainGeo = new THREE.CylinderGeometry(0.008, 0.012, 0.6, 3);
+  // ---------- Hujan ----------
+  const RAIN_COUNT = 700;
+  const AREA = 70;
+  const rainGeo = new THREE.CylinderGeometry(0.01, 0.01, 0.5, 3);
   const rainMat = new THREE.MeshBasicMaterial({
-    color: 0xc2e0ff,
+    color: 0xaad4ff,
     transparent: true,
     opacity: 0,
     depthWrite: false,
   });
   const rainMesh = new THREE.InstancedMesh(rainGeo, rainMat, RAIN_COUNT);
-  rainMesh.frustumCulled = false;
+  rainMesh.frustumCulled = false; // area hujan luas, jangan sampai kepotong pas kamera deket
   group.add(rainMesh);
 
-  const rainDrops = Array.from({ length: RAIN_COUNT }, () => ({
-    x: (Math.random() - 0.5) * AREA,
-    y: rand(0, 35),
-    z: (Math.random() - 0.5) * AREA,
-    speed: rand(18, 28),
-  }));
-
-  // ---------- 2. Cipratan Air (Rain Splashes) ----------
-  const SPLASH_COUNT = 400;
-  const splashGeo = new THREE.PlaneGeometry(0.2, 0.2);
-  const splashMat = new THREE.MeshBasicMaterial({
-    color: 0xd8edff,
-    transparent: true,
-    opacity: 0,
-    depthWrite: false,
-    side: THREE.DoubleSide,
-  });
-  const splashMesh = new THREE.InstancedMesh(splashGeo, splashMat, SPLASH_COUNT);
-  splashMesh.frustumCulled = false;
-  group.add(splashMesh);
-
-  const splashData = Array.from({ length: SPLASH_COUNT }, () => ({
-    x: (Math.random() - 0.5) * AREA,
-    z: (Math.random() - 0.5) * AREA,
-    scale: rand(0.5, 1.5),
-    life: Math.random(),
-  }));
-
+  const rainDrops = [];
+  for (let i = 0; i < RAIN_COUNT; i++) {
+    rainDrops.push({
+      x: (Math.random() - 0.5) * AREA,
+      y: rand(0, 30),
+      z: (Math.random() - 0.5) * AREA,
+      speed: rand(14, 22),
+    });
+  }
   const dummy = new THREE.Object3D();
 
-  function updateRainAndSplashes(delta, intensity, elapsed) {
-    // Rain updates
-    rainMat.opacity = intensity * 0.7;
-    if (intensity > 0.01) {
-      const windX = Math.sin(elapsed * 1.5) * 5.0 + 3.0; // Angin dinamis
-      const windTilt = -0.15 - intensity * 0.25;
+  function updateRain(delta, intensity) {
+    rainMat.opacity = intensity * 0.5;
+    if (intensity <= 0.01) return;
 
-      for (let i = 0; i < RAIN_COUNT; i++) {
-        const d = rainDrops[i];
-        d.y -= (d.speed + intensity * 10) * delta;
-        d.x += windX * delta;
-
-        if (d.y < waterLevel) {
-          d.y = rand(22, 35);
-          d.x = (Math.random() - 0.5) * AREA;
-          d.z = (Math.random() - 0.5) * AREA;
-        }
-
-        dummy.position.set(d.x, d.y, d.z);
-        dummy.rotation.z = windTilt;
-        dummy.scale.set(1, 0.5 + intensity * 2.2, 1);
-        dummy.updateMatrix();
-        rainMesh.setMatrixAt(i, dummy.matrix);
+    for (let i = 0; i < RAIN_COUNT; i++) {
+      const d = rainDrops[i];
+      d.y -= d.speed * delta;
+      d.x += delta * 2.2; // tetesan hanyut sedikit, kesan ketiup angin
+      if (d.y < waterLevel) {
+        d.y = rand(20, 30);
+        d.x = (Math.random() - 0.5) * AREA;
+        d.z = (Math.random() - 0.5) * AREA;
       }
-      rainMesh.instanceMatrix.needsUpdate = true;
+      dummy.position.set(d.x, d.y, d.z);
+      dummy.rotation.z = -0.25; // miring konsisten, arah angin
+      dummy.scale.set(1, 0.4 + intensity * 1.3, 1); // makin badai, tetesan makin "memanjang"
+      dummy.updateMatrix();
+      rainMesh.setMatrixAt(i, dummy.matrix);
     }
-
-    // Splash updates
-    splashMat.opacity = intensity * 0.5;
-    if (intensity > 0.05) {
-      for (let i = 0; i < SPLASH_COUNT; i++) {
-        const s = splashData[i];
-        s.life += delta * (4.0 + intensity * 3.0);
-        if (s.life > 1.0) {
-          s.life = 0;
-          s.x = (Math.random() - 0.5) * AREA;
-          s.z = (Math.random() - 0.5) * AREA;
-        }
-
-        dummy.position.set(s.x, waterLevel + 0.03, s.z);
-        dummy.rotation.x = -Math.PI / 2;
-        const sScale = s.scale * (0.3 + s.life * 0.7);
-        dummy.scale.set(sScale, sScale, sScale);
-        dummy.updateMatrix();
-        splashMesh.setMatrixAt(i, dummy.matrix);
-      }
-      splashMesh.instanceMatrix.needsUpdate = true;
-    }
+    rainMesh.instanceMatrix.needsUpdate = true;
   }
 
-  // ---------- 3. Petir & Light Flicker ----------
+  // ---------- Petir ----------
   let flashTimer = 0;
-  let nextFlashIn = rand(3, 8);
+  let nextFlashIn = rand(4, 10);
   let flashIntensity = 0;
-  let flickerQueue = [];
-
-  const lightningLight = new THREE.PointLight(0xb5d8ff, 0, 150);
-  group.add(lightningLight);
-
-  function triggerThunder() {
-    flickerQueue = [1.0, 0.25, 0.85, 0.1, 0.5, 0.0];
-    lightningLight.position.set(
-      (Math.random() - 0.5) * AREA,
-      rand(18, 28),
-      (Math.random() - 0.5) * AREA
-    );
-    onEvent?.("thunder");
-  }
 
   function updateLightning(delta, intensity) {
-    if (intensity < 0.25) {
-      flashIntensity = 0;
-      lightningLight.intensity = 0;
+    if (intensity < 0.3) {
+      flashIntensity = Math.max(0, flashIntensity - delta * 3.5);
       return;
     }
-
     flashTimer += delta;
     if (flashTimer >= nextFlashIn) {
       flashTimer = 0;
-      nextFlashIn = rand(2, 7) / Math.max(intensity, 0.3);
-      triggerThunder();
-    }
-
-    if (flickerQueue.length > 0) {
-      flashIntensity = flickerQueue.shift();
+      nextFlashIn = rand(3, 9) / Math.max(intensity, 0.3); // makin badai, makin sering nyamber
+      flashIntensity = 1;
+      onEvent?.("thunder");
     } else {
-      flashIntensity = Math.max(0, flashIntensity - delta * 6.0);
+      flashIntensity = Math.max(0, flashIntensity - delta * 3.5); // decay cepat, kesan kilat sesaat
     }
-
-    lightningLight.intensity = flashIntensity * 15.0;
   }
 
-  // ---------- 4. State Machine Cuaca ----------
+  // ---------- State machine cuaca ----------
   let state = CALM;
   let stateTime = 0;
   let stateDuration = rand(...calmRange);
@@ -203,10 +150,8 @@ export function createWeatherSystem({
 
     tmpSun.copy(calm.sunColor).lerp(storm.sunColor, t);
     sun.color.copy(tmpSun);
-    
-    // Kilatan mempengaruhi ambient/directional sun light secara instan
     const baseSunIntensity = THREE.MathUtils.lerp(calm.sunIntensity, storm.sunIntensity, t);
-    sun.intensity = baseSunIntensity + flashIntensity * 3.5;
+    sun.intensity = baseSunIntensity + flashIntensity * 2.5; // kilat numpuk di atas intensitas dasar
 
     if (sandMaterial) {
       sandMaterial.uniforms.uFogColor.value.copy(tmpFog);
@@ -248,8 +193,8 @@ export function createWeatherSystem({
 
     updateLightning(delta, targetIntensity);
     applyIntensity(targetIntensity);
-    updateRainAndSplashes(delta, targetIntensity, elapsed);
-    clouds?.setStormIntensity?.(targetIntensity);
+    updateRain(delta, targetIntensity);
+    clouds?.setStormIntensity?.(targetIntensity); // BARU: nyambungin ke awan
 
     return { intensity: targetIntensity, isStorming: state !== CALM, flashIntensity };
   }
@@ -257,8 +202,6 @@ export function createWeatherSystem({
   function dispose() {
     rainGeo.dispose();
     rainMat.dispose();
-    splashGeo.dispose();
-    splashMat.dispose();
   }
 
   return { group, update, dispose };

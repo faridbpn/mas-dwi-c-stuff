@@ -131,4 +131,4 @@ better graphics
 
 [done]kraken ester egg map pantai
 
-[]awan realistis gerak
+[done]awan realistis gerak

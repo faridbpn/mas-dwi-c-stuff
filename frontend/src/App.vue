@@ -1,5 +1,6 @@
 <template>
   <LoadingScreen ref="loadingScreenRef" />
+  <MapLoadingScreen ref="mapLoadingScreenRef" />
 
   <LibraryScene
     v-if="!initialLoading"
@@ -9,6 +10,7 @@
     :matched-ids="matchedBookIds"
     :has-active-filter="hasActiveFilter"
     :is-filtering="searchQuery.trim().length > 0"
+    :environment-id="currentMapId"
     @edit-book="openEdit"
     @move-book="handleMove"
     @request-delete="requestDelete"
@@ -68,16 +70,20 @@
   <SettingsPanel
     :show="showSettings"
     :volume="volume"
+    :maps="MAP_OPTIONS"
+    :active-map-id="currentMapId"
     @close="showSettings = false"
     @update:volume="setVolume"
+    @select-map="selectMap"
   />
 </template>
 
 <script setup>
 import { useBackgroundMusic } from "./composables/useBackgroundMusic";
 const { isMuted, toggleMute, volume, setVolume } = useBackgroundMusic("/music/bgm.mp3", { volume: 0.3 });
-import { ref, computed, onMounted } from "vue";
+import { ref, computed, onMounted, nextTick } from "vue";
 import LoadingScreen from "./components/LoadingScreen.vue";
+import MapLoadingScreen from "./components/MapLoadingScreen.vue";
 import LibraryScene from "./components/LibraryScene.vue";
 import BookFormModal from "./components/BookFormModal.vue";
 import ToastStack from "./components/ToastStack.vue";
@@ -86,6 +92,7 @@ import { fetchBooks, createBook, updateBook, deleteBook } from "./api/books";
 
 const books = ref([]);
 const loadingScreenRef = ref(null);
+const mapLoadingScreenRef = ref(null);
 const initialLoading = ref(true);
 const showModal = ref(false);
 const showSettings = ref(false);
@@ -94,6 +101,49 @@ const libraryRef = ref(null);
 
 const searchQuery = ref("");
 const activeGenre = ref(null);
+
+// ---------- Map selection (BARU) ----------
+const MAP_OPTIONS = [
+  { id: "forest", label: "Hutan", icon: "🌲" },
+  { id: "beach", label: "Pulau Pantai", icon: "🏝️" },
+];
+
+const currentMapId = ref(localStorage.getItem("selected-map") || "forest");
+
+async function selectMap(id) {
+  if (id === currentMapId.value) {
+    showSettings.value = false;
+    return;
+  }
+
+  // Mulai loading screen
+  mapLoadingScreenRef.value?.startLoading();
+  showSettings.value = false;
+
+  const start = performance.now();
+
+  // Kasih browser kesempatan NGEGAMBAR overlay loading dulu, sebelum main
+  // thread diblokir sama kerjaan berat (bikin ulang scene, compile shader
+  // laut/pasir di beach, dsb). Tanpa ini, overlay-nya gak sempet kelihatan
+  // sama sekali karena browser belum sempat "ngecat" layar.
+  await nextTick();
+  await new Promise(requestAnimationFrame);
+  await new Promise(requestAnimationFrame);
+
+  libraryRef.value?.switchEnvironment(id);
+  currentMapId.value = id;
+  localStorage.setItem("selected-map", id);
+
+  // Jeda minimum biar loading-nya gak "kedip" sekilas doang kalau
+  // map-nya kebetulan cepet banget selesai dibangun
+  const MIN_LOADING_MS = 700;
+  const elapsed = performance.now() - start;
+  if (elapsed < MIN_LOADING_MS) {
+    await new Promise((resolve) => setTimeout(resolve, MIN_LOADING_MS - elapsed));
+  }
+
+  mapLoadingScreenRef.value?.stopLoading();
+}
 
 const allGenres = computed(() => [...new Set(books.value.map((b) => b.genre).filter(Boolean))]);
 
@@ -252,39 +302,7 @@ body {
   background: #1d1d1f;
   color: white;
 }
-.loading-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 50;
-  background: #eef0f3;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 16px;
-  color: #6e6e73;
-}
-.spinner {
-  width: 40px;
-  height: 40px;
-  border: 3px solid rgba(0, 0, 0, 0.1);
-  border-top-color: #1d1d1f;
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
-}
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-.fade-enter-active,
-.fade-leave-active {
-  transition: opacity 0.3s ease;
-}
-.fade-enter-from,
-.fade-leave-to {
-  opacity: 0;
-}
+
 
 .settings-toggle {
   position: fixed;
@@ -305,7 +323,7 @@ body {
 .music-toggle {
   position: fixed;
   top: 20px;
-  right: 76px; /* GESER dari 24px, biar gak numpuk sama tombol settings */
+  right: 76px;
   z-index: 15;
   width: 44px;
   height: 44px;
