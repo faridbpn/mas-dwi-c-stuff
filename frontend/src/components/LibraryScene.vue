@@ -28,6 +28,7 @@ const props = defineProps({
   books: { type: Array, required: true },
   matchedIds: { type: Set, default: () => new Set() },
   hasActiveFilter: { type: Boolean, default: false },
+  environmentId: { type: String, default: "forest" },
 });
 const emit = defineEmits(["edit-book", "move-book", "request-delete"]);
 
@@ -51,6 +52,7 @@ onMounted(() => {
     onBoardAnchorUpdate: (anchor) => {
       boardAnchor.value = anchor;
     },
+    environmentId: props.environmentId,
   });
   scene.init(containerRef.value);
   scene.layoutBooks(props.books);
@@ -70,7 +72,9 @@ watch(
 );
 
 onBeforeUnmount(() => scene?.destroy());
-defineExpose({ refreshLayout: () => scene?.layoutBooks(props.books) });
+defineExpose({
+  switchEnvironment: (id) => scene?.switchEnvironment(id), // BARU
+});
 </script>
 
 <style scoped>
