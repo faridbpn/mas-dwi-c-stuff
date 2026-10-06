@@ -1,6 +1,5 @@
 import * as THREE from "three";
 
-// Tekstur gumpalan awan di-generate SEKALI doang
 let sharedCloudTexture = null;
 function getCloudTexture() {
   if (sharedCloudTexture) return sharedCloudTexture;
@@ -21,11 +20,14 @@ function getCloudTexture() {
   return sharedCloudTexture;
 }
 
-// 1 gerombolan awan = beberapa sprite ditumpuk acak
+// BARU: 2 warna ujung interpolasi -- cerah vs badai
+const CALM_COLOR = new THREE.Color(0xffffff);
+const STORM_COLOR = new THREE.Color(0x4a4f57);
+
 function createCloudBlob({ puffCount, radius, baseOpacity }) {
   const group = new THREE.Group();
   const texture = getCloudTexture();
-  const sprites = []; // Simpan referensi sprite buat animasi rotasi nanti
+  const sprites = [];
 
   for (let i = 0; i < puffCount; i++) {
     const material = new THREE.SpriteMaterial({
@@ -40,7 +42,7 @@ function createCloudBlob({ puffCount, radius, baseOpacity }) {
 
     const angle = Math.random() * Math.PI * 2;
     const r = Math.random() * radius;
-    
+
     sprite.position.set(
       Math.cos(angle) * r,
       (Math.random() - 0.5) * radius * 0.3,
@@ -49,29 +51,24 @@ function createCloudBlob({ puffCount, radius, baseOpacity }) {
 
     const scale = radius * (0.6 + Math.random() * 0.8);
     sprite.scale.set(scale, scale * 0.55, 1);
-    
-    // Simpan data awal untuk efek micro-motion (rotasi & pulsasi tipis)
+
     sprite.userData = {
       baseScaleX: scale,
       baseScaleY: scale * 0.55,
-      rotSpeed: (Math.random() - 0.5) * 0.2, // Kecepatan putar halus tiap puff
+      rotSpeed: (Math.random() - 0.5) * 0.2,
       pulseSpeed: 1 + Math.random() * 2,
       pulseOffset: Math.random() * Math.PI * 2,
+      baseOpacity: material.opacity, // BARU: simpan opacity asli, dipakai buat badai lebih pekat
     };
 
     group.add(sprite);
     sprites.push(sprite);
   }
-  
-  // Lampirkan array sprite ke group.userData biar bisa diakses di update loop
+
   group.userData.sprites = sprites;
   return group;
 }
 
-/**
- * @param {number} count               Jumlah total gerombolan awan
- * @param {Object} options
- */
 export function createClouds(count = 40, options = {}) {
   const {
     areaSize = 650,
@@ -83,9 +80,6 @@ export function createClouds(count = 40, options = {}) {
   const group = new THREE.Group();
   const clouds = [];
 
-  // Bagi total awan menjadi 2 layer: 
-  // Layer 1 (Awan Bawah): Lebih sedikit, ukuran besar, posisi lebih rendah, gerak lebih cepat (Parallax kuat)
-  // Layer 2 (Awan Atas/Jauh): Jumlah lebih banyak, ukuran lebih kecil, posisi tinggi, gerak lambat
   const lowLayerCount = Math.floor(count * 0.35);
   const highLayerCount = count - lowLayerCount;
 
@@ -93,13 +87,13 @@ export function createClouds(count = 40, options = {}) {
     const cloudRadius = isLowLayer ? [20, 38] : [8, 18];
     const heightRange = isLowLayer ? [50, 75] : [80, 120];
     const puffCount = isLowLayer ? 9 : 5;
-    const speedMultiplier = isLowLayer ? 1.2 : 0.6; // Awan bawah ngebut, awan atas santai
+    const speedMultiplier = isLowLayer ? 1.2 : 0.6;
 
     const radius = THREE.MathUtils.randFloat(...cloudRadius);
     const blob = createCloudBlob({
       puffCount: puffCount + Math.floor(Math.random() * 3),
       radius,
-      baseOpacity: isLowLayer ? opacity * 0.9 : opacity * 0.6, // Awan bawah lebih pekat
+      baseOpacity: isLowLayer ? opacity * 0.9 : opacity * 0.6,
     });
 
     blob.position.set(
@@ -110,25 +104,37 @@ export function createClouds(count = 40, options = {}) {
 
     blob.userData.speed = baseWindSpeed * speedMultiplier * (0.8 + Math.random() * 0.4);
     blob.userData.radius = radius;
+    blob.userData.isLowLayer = isLowLayer; // BARU: dipakai biar awan rendah lebih gelap duluan pas badai
 
     group.add(blob);
     clouds.push(blob);
   }
 
-  // Buat kedua layer awan
   for (let i = 0; i < lowLayerCount; i++) spawnCloud(true);
   for (let i = 0; i < highLayerCount; i++) spawnCloud(false);
 
   const halfArea = areaSize / 2;
   const margin = 50;
 
+  // BARU: state intensity badai, 0 = cerah, 1 = badai penuh
+  let stormIntensity = 0;
+  const tmpColor = new THREE.Color();
+
+  function setStormIntensity(t) {
+    stormIntensity = THREE.MathUtils.clamp(t, 0, 1);
+  }
+
   function update(elapsed, delta) {
     if (delta === undefined || isNaN(delta)) delta = 0.016;
 
     clouds.forEach((cloud) => {
-      // 1. Pergerakan angin & wrap-around map
       cloud.position.x += windDirection.x * cloud.userData.speed * delta;
       cloud.position.z += windDirection.y * cloud.userData.speed * delta;
+
+      // BARU: angin kencang pas badai -> awan hanyut lebih cepat
+      const windBoost = 1 + stormIntensity * 2.5;
+      cloud.position.x += windDirection.x * cloud.userData.speed * delta * (windBoost - 1);
+      cloud.position.z += windDirection.y * cloud.userData.speed * delta * (windBoost - 1);
 
       const limit = halfArea + margin;
       if (cloud.position.x > limit) {
@@ -147,17 +153,24 @@ export function createClouds(count = 40, options = {}) {
         cloud.position.x = (Math.random() - 0.5) * areaSize;
       }
 
-      // 2. Efek Micro-Motion / Subtle Scaling & Rotasi Sprite per Frame
-      // Membuat sprite 2D terasa bervolume hidup saat kamera berputar
+      // BARU: awan lapisan bawah menggelap duluan & lebih ekstrem dari lapisan atas
+      const layerFactor = cloud.userData.isLowLayer ? 1 : 0.6;
+      tmpColor.copy(CALM_COLOR).lerp(STORM_COLOR, stormIntensity * layerFactor);
+
       if (cloud.userData.sprites) {
         cloud.userData.sprites.forEach((sprite, idx) => {
-          // Sedikit perubahan skala bergelombang (napas/pulsasi halus)
-          const pulse = Math.sin(elapsed * sprite.userData.pulseSpeed + sprite.userData.pulseOffset + idx) * 0.03 + 1;
+          const pulse =
+            Math.sin(elapsed * sprite.userData.pulseSpeed + sprite.userData.pulseOffset + idx) * 0.03 + 1;
           sprite.scale.set(
             sprite.userData.baseScaleX * pulse,
             sprite.userData.baseScaleY * pulse,
             1
           );
+
+          // BARU: warna & opacity ikut intensity badai
+          sprite.material.color.copy(tmpColor);
+          sprite.material.opacity =
+            sprite.userData.baseOpacity * (1 + stormIntensity * layerFactor * 0.3); // badai -> awan makin pekat/nutup langit
         });
       }
     });
@@ -169,5 +182,5 @@ export function createClouds(count = 40, options = {}) {
     });
   }
 
-  return { group, update, dispose };
+  return { group, update, dispose, setStormIntensity }; // BARU: expose setStormIntensity
 }
