@@ -6,6 +6,7 @@ import { createClouds } from "../clouds";
 import { createPalmGrove } from "../palmTrees";
 import { createRockFormations } from "../rocks";
 import { createWeatherSystem } from "../weather";
+import { createCrabSystem } from "../crabs";
 
 const FLAT_RADIUS = 9;
 const ISLAND_RADIUS = 16;
@@ -104,6 +105,13 @@ function rockValidSpot(x, z, dist) {
   const nearHeadland =
     Math.abs(angleDist(angle, ROCKY_ANGLE)) < ROCKY_WIDTH * 1.4;
   return nearHeadland || Math.random() < 0.25;
+}
+
+function crabValidSpot(x, z, dist) {
+  const { islandR } = worldAngleAndRadius(x, z);
+  if (dist < FLAT_RADIUS + 1) return false; // jangan masuk plaza rak
+  if (dist > islandR - 0.3) return false; // jangan nyemplung laut
+  return true;
 }
 
 // Port GLSL dari sandHeight() di atas. Konstanta diambil dari JS supaya selalu sinkron.
@@ -281,7 +289,8 @@ function createSandIsland(sunPosition, fogColor, fogDensity) {
     const x = pos.getX(i);
     const z = pos.getY(i);
     const h = sandHeight(x, z);
-    if (!isFinite(h)) console.warn(`[Sand] Invalid height at (${x}, ${z}): ${h}`);
+    if (!isFinite(h))
+      console.warn(`[Sand] Invalid height at (${x}, ${z}): ${h}`);
     pos.setZ(i, h);
 
     const c = dry.clone();
@@ -604,6 +613,16 @@ export const beachEnvironment = {
     });
     scene.add(rocks.group);
 
+    const crabs = createCrabSystem({
+      modelUrl: "/models/crab/scene.gltf", // ganti sesuai path model kamu
+      count: 6,
+      targetSize: 0.35,
+      heightSampler: worldHeightAt,
+      isValidSpot: crabValidSpot,
+      area: 40,
+    });
+    scene.add(crabs.group);
+
     const weather = createWeatherSystem({
       scene,
       hemi,
@@ -672,6 +691,13 @@ export const beachEnvironment = {
         kraken.update(elapsed);
         clouds.update(elapsed, delta);
         palms.update(elapsed, 1 + intensity * 3);
+        crabs.update(elapsed, delta); // BARU
+      },
+      // BARU: environment sekarang bisa "nangkep" klik umum (bukan drag buku)
+      handleClick(raycaster) {
+        const hits = raycaster.intersectObjects(crabs.getClickTargets(), true);
+        if (hits.length) return crabs.handleClick(hits[0].object);
+        return false;
       },
       dispose() {
         scene.remove(
@@ -686,6 +712,7 @@ export const beachEnvironment = {
           palms.group,
           rocks.group,
           weather.group,
+          crabs.group, // BARU
         );
         sand.dispose();
         ocean.dispose();
@@ -694,6 +721,7 @@ export const beachEnvironment = {
         palms.dispose();
         rocks.dispose();
         weather.dispose();
+        crabs.dispose(); // BARU
         scene.fog = null;
       },
     };

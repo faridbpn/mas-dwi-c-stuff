@@ -262,14 +262,24 @@ export function useLibraryScene({
 
   function onPointerUp(event) {
     controls.enabled = true;
-    if (!draggingMesh) return;
-
-    clearDragFeedback();
 
     const movedDistance = Math.hypot(
       event.clientX - pointerDownPos.x,
       event.clientY - pointerDownPos.y,
     );
+
+    // BARU: klik tanpa narik buku -> coba serahkan ke environment
+    // (misal klik kepiting di beach), gak perlu draggingMesh buat ini
+    if (!draggingMesh) {
+      if (movedDistance < 6) {
+        raycaster.setFromCamera(pointer, camera);
+        currentEnvironment?.handleClick?.(raycaster);
+      }
+      return;
+    }
+
+    clearDragFeedback();
+
     const mesh = draggingMesh;
     draggingMesh = null;
 

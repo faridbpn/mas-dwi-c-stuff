@@ -125,9 +125,11 @@ better graphics
 
 [done]new map pantai
 
-[]switch map
+[done]switch map
 
 []3d object yang bisa interaksi
+kepiting di map beach
+domba di gunung
 
 [done]kraken ester egg map pantai
 
