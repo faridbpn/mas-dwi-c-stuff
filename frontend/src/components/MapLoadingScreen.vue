@@ -334,7 +334,7 @@ defineExpose({
 .seal-container {
   position: relative;
   margin-bottom: 1.5rem;
-  select-user: none;
+  user-select: none;
 }
 
 .seal-animation {
@@ -401,7 +401,7 @@ defineExpose({
   gap: 0.25rem;
   margin: 0.5rem 0 1.5rem;
   cursor: default;
-  select-user: none;
+  user-select: none;
   font-family: "Fredoka", cursive, sans-serif;
   font-weight: 900;
   text-transform: uppercase;
