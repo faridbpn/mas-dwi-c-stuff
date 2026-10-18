@@ -11,6 +11,8 @@
     :has-active-filter="hasActiveFilter"
     :is-filtering="searchQuery.trim().length > 0"
     :environment-id="currentMapId"
+    :walk-mode="walkMode"
+    :input-locked="showModal || showSettings || mapLoading"
     @edit-book="openEdit"
     @move-book="handleMove"
     @request-delete="requestDelete"
@@ -43,6 +45,21 @@
     </button>
   </div>
 
+  <button
+    class="walk-toggle"
+    :class="{ active: walkMode }"
+    @click="toggleWalkMode"
+  >
+    {{ walkMode ? "🔭 Mode Orbit (V)" : "🚶 Mode Jalan (V)" }}
+  </button>
+
+  <Transition name="fade">
+    <div v-if="walkMode" class="walk-hint">
+      <b>WASD</b> jalan · <b>Shift</b> lari · <b>Spasi</b> lompat<br />
+      Seret area kosong untuk menoleh · seret buku seperti biasa
+    </div>
+  </Transition>
+
   <button class="fab-add" @click="openAdd">+ Tambah Buku</button>
 
   <BookFormModal
@@ -57,7 +74,9 @@
     class="settings-toggle"
     @click="showSettings = true"
     title="Pengaturan"
-  >⚙️</button>
+  >
+    ⚙️
+  </button>
 
   <button
     class="music-toggle"
@@ -80,8 +99,11 @@
 
 <script setup>
 import { useBackgroundMusic } from "./composables/useBackgroundMusic";
-const { isMuted, toggleMute, volume, setVolume } = useBackgroundMusic("/music/bgm.mp3", { volume: 0.3 });
-import { ref, computed, onMounted, nextTick } from "vue";
+const { isMuted, toggleMute, volume, setVolume } = useBackgroundMusic(
+  "/music/bgm.mp3",
+  { volume: 0.3 },
+);
+import { ref, computed, onMounted, onBeforeUnmount, nextTick } from "vue";
 import LoadingScreen from "./components/LoadingScreen.vue";
 import MapLoadingScreen from "./components/MapLoadingScreen.vue";
 import LibraryScene from "./components/LibraryScene.vue";
@@ -94,15 +116,25 @@ const books = ref([]);
 const loadingScreenRef = ref(null);
 const mapLoadingScreenRef = ref(null);
 const initialLoading = ref(true);
+const mapLoading = ref(false); // State untuk mengunci input saat ganti map
 const showModal = ref(false);
 const showSettings = ref(false);
-const activeBook = ref({ title: "", author: "", year: null, status: "mau_dibaca", genre: "", rating: 0, notes: "" });
+const activeBook = ref({
+  title: "",
+  author: "",
+  year: null,
+  status: "mau_dibaca",
+  genre: "",
+  rating: 0,
+  notes: "",
+});
 const libraryRef = ref(null);
+const walkMode = ref(false);
 
 const searchQuery = ref("");
 const activeGenre = ref(null);
 
-// ---------- Map selection (BARU) ----------
+// ---------- Map selection ----------
 const MAP_OPTIONS = [
   { id: "forest", label: "Hutan", icon: "🌲" },
   { id: "beach", label: "Pulau Pantai", icon: "🏝️" },
@@ -116,16 +148,13 @@ async function selectMap(id) {
     return;
   }
 
-  // Mulai loading screen
+  // Mulai loading screen & kunci input
+  mapLoading.value = true;
   mapLoadingScreenRef.value?.startLoading();
   showSettings.value = false;
 
   const start = performance.now();
 
-  // Kasih browser kesempatan NGEGAMBAR overlay loading dulu, sebelum main
-  // thread diblokir sama kerjaan berat (bikin ulang scene, compile shader
-  // laut/pasir di beach, dsb). Tanpa ini, overlay-nya gak sempet kelihatan
-  // sama sekali karena browser belum sempat "ngecat" layar.
   await nextTick();
   await new Promise(requestAnimationFrame);
   await new Promise(requestAnimationFrame);
@@ -134,23 +163,29 @@ async function selectMap(id) {
   currentMapId.value = id;
   localStorage.setItem("selected-map", id);
 
-  // Jeda minimum biar loading-nya gak "kedip" sekilas doang kalau
-  // map-nya kebetulan cepet banget selesai dibangun
   const MIN_LOADING_MS = 700;
   const elapsed = performance.now() - start;
   if (elapsed < MIN_LOADING_MS) {
-    await new Promise((resolve) => setTimeout(resolve, MIN_LOADING_MS - elapsed));
+    await new Promise((resolve) =>
+      setTimeout(resolve, MIN_LOADING_MS - elapsed),
+    );
   }
 
   mapLoadingScreenRef.value?.stopLoading();
+  mapLoading.value = false; // Buka kembali kunci input
 }
 
-const allGenres = computed(() => [...new Set(books.value.map((b) => b.genre).filter(Boolean))]);
+const allGenres = computed(() => [
+  ...new Set(books.value.map((b) => b.genre).filter(Boolean)),
+]);
 
 const filteredBooks = computed(() => {
   const q = searchQuery.value.trim().toLowerCase();
   return books.value.filter((b) => {
-    const matchesSearch = !q || b.title.toLowerCase().includes(q) || b.author.toLowerCase().includes(q);
+    const matchesSearch =
+      !q ||
+      b.title.toLowerCase().includes(q) ||
+      b.author.toLowerCase().includes(q);
     const matchesGenre = !activeGenre.value || b.genre === activeGenre.value;
     return matchesSearch && matchesGenre;
   });
@@ -160,7 +195,10 @@ const matchedBookIds = computed(() => {
   const q = searchQuery.value.trim().toLowerCase();
   const ids = new Set();
   books.value.forEach((b) => {
-    const matchesSearch = !q || b.title.toLowerCase().includes(q) || b.author.toLowerCase().includes(q);
+    const matchesSearch =
+      !q ||
+      b.title.toLowerCase().includes(q) ||
+      b.author.toLowerCase().includes(q);
     const matchesGenre = !activeGenre.value || b.genre === activeGenre.value;
     if (matchesSearch && matchesGenre) ids.add(b.id);
   });
@@ -168,10 +206,12 @@ const matchedBookIds = computed(() => {
 });
 
 const hasActiveFilter = computed(
-  () => searchQuery.value.trim().length > 0 || activeGenre.value !== null
+  () => searchQuery.value.trim().length > 0 || activeGenre.value !== null,
 );
 
-async function refresh() { books.value = await fetchBooks(); }
+async function refresh() {
+  books.value = await fetchBooks();
+}
 
 onMounted(async () => {
   try {
@@ -184,21 +224,49 @@ onMounted(async () => {
   }
 });
 
+function toggleWalkMode(event) {
+  event?.currentTarget?.blur?.();
+  walkMode.value = !walkMode.value;
+}
+
+function onGlobalKey(e) {
+  const tag = e.target?.tagName;
+  const typing = tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
+  if (e.code === "KeyV" && !typing && !showModal.value && !showSettings.value) {
+    toggleWalkMode();
+  }
+}
+onMounted(() => window.addEventListener("keydown", onGlobalKey));
+onBeforeUnmount(() => window.removeEventListener("keydown", onGlobalKey));
+
 function openAdd() {
-  activeBook.value = { title: "", author: "", year: null, status: "mau_dibaca", genre: "", rating: 0, notes: "" };
+  activeBook.value = {
+    title: "",
+    author: "",
+    year: null,
+    status: "mau_dibaca",
+    genre: "",
+    rating: 0,
+    notes: "",
+  };
   showModal.value = true;
 }
+
 function openEdit(id) {
-  const found = books.value.find(
-  (b) => b.id === id);
-  if (found) { activeBook.value = { ...found }; showModal.value = true; }
+  const found = books.value.find((b) => b.id === id);
+  if (found) {
+    activeBook.value = { ...found };
+    showModal.value = true;
+  }
 }
+
 async function handleSubmit(payload) {
   if (payload.id) await updateBook(payload.id, payload);
   else await createBook(payload);
   showModal.value = false;
   await refresh();
 }
+
 async function handleMove({ id, status }) {
   const book = books.value.find((b) => b.id === id);
   if (!book) return;
@@ -214,12 +282,23 @@ async function handleMove({ id, status }) {
 
 const toasts = ref([]);
 const UNDO_WINDOW_MS = 5000;
+
 function requestDelete(bookId) {
   const book = books.value.find((b) => b.id === bookId);
   if (!book) return;
   const toastId = crypto.randomUUID();
-  const timeoutId = setTimeout(() => finalizeDelete(bookId, toastId), UNDO_WINDOW_MS);
-  toasts.value.push({ id: toastId, bookId, message: `"${book.title}" dihapus`, actionLabel: "Undo", duration: UNDO_WINDOW_MS, timeoutId });
+  const timeoutId = setTimeout(
+    () => finalizeDelete(bookId, toastId),
+    UNDO_WINDOW_MS,
+  );
+  toasts.value.push({
+    id: toastId,
+    bookId,
+    message: `"${book.title}" dihapus`,
+    actionLabel: "Undo",
+    duration: UNDO_WINDOW_MS,
+    timeoutId,
+  });
 }
 
 async function finalizeDelete(bookId, toastId) {
@@ -303,7 +382,6 @@ body {
   color: white;
 }
 
-
 .settings-toggle {
   position: fixed;
   top: 20px;
@@ -334,5 +412,39 @@ body {
   font-size: 1.2rem;
   cursor: pointer;
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
+}
+
+.walk-toggle {
+  position: fixed;
+  bottom: 24px;
+  left: 160px;
+  z-index: 15;
+  padding: 12px 18px;
+  border-radius: 100px;
+  border: none;
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(10px);
+  color: #1d1d1f;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
+}
+.walk-toggle.active {
+  background: #1d1d1f;
+  color: #fff;
+}
+
+.walk-hint {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 15;
+  padding: 10px 14px;
+  border-radius: 14px;
+  background: rgba(29, 29, 31, 0.8);
+  color: #fff;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  pointer-events: none;
 }
 </style>

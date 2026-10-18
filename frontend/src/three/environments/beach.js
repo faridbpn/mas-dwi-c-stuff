@@ -699,6 +699,11 @@ export const beachEnvironment = {
         if (hits.length) return crabs.handleClick(hits[0].object);
         return false;
       },
+      getGroundHeight: worldHeightAt,
+      isWalkable: (x, z) => {
+        const { islandR } = worldAngleAndRadius(x, z);
+        return Math.hypot(x, z) < islandR - 0.8; // berhenti sebelum garis pantai
+      },
       dispose() {
         scene.remove(
           sky,

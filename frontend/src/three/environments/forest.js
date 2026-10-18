@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { createSky, createTerrain, createMountains, setupOutdoorLighting } from "../environment";
+import { createSky, createTerrain, createMountains, setupOutdoorLighting, hillHeight } from "../environment";
 import { createDayNightCycle } from "../dayNight";
 import { createFireflies } from "../fireflies";
 import { createBirdFlock } from "../birds";
@@ -36,7 +36,6 @@ export const forestEnvironment = {
     scene.add(leaves.mesh); // <- SESUAIKAN: kalau leaves.js kamu abis fix kemarin returnnya
                               //    jadi `.meshes` (array), ganti baris ini jadi:
                               //    leaves.meshes.forEach((m) => scene.add(m));
-
     return {
       update(elapsed, delta) {
         const { isNight } = dayNightCycle.update(elapsed);
@@ -47,6 +46,8 @@ export const forestEnvironment = {
         grass.update(elapsed);
         leaves.update(elapsed, delta);
       },
+      getGroundHeight: (x, z) => hillHeight(x, -z),
+      isWalkable: (x, z) => Math.hypot(x, z) < 28,
       dispose() {
         scene.remove(sky, terrain, mountains, hemi, sun, fireflies.points, birds.group, grass.mesh, leaves.mesh);
         scene.fog = null;
