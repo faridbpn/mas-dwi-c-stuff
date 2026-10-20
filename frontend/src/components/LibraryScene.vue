@@ -57,19 +57,22 @@ watch(
   (b) => scene?.layoutBooks(b),
   { deep: true },
 );
+
 watch(
   [() => props.matchedIds, () => props.hasActiveFilter],
   ([ids, active]) => {
     scene?.updateHighlight(ids, active);
   },
-  watch(
-    () => props.walkMode,
-    (on) => scene?.setWalkMode(on),
-  ),
-  watch(
-    () => props.inputLocked,
-    (v) => scene?.setInputLocked(v),
-  ),
+);
+
+watch(
+  () => props.walkMode,
+  (on) => scene?.setWalkMode(on),
+);
+
+watch(
+  () => props.inputLocked,
+  (v) => scene?.setInputLocked(v),
 );
 
 onBeforeUnmount(() => scene?.destroy());

@@ -7,6 +7,7 @@ import { createPalmGrove } from "../palmTrees";
 import { createRockFormations } from "../rocks";
 import { createWeatherSystem } from "../weather";
 import { createCrabSystem } from "../crabs";
+import { createSkyLighting } from "../skyLighting";
 
 const FLAT_RADIUS = 9;
 const ISLAND_RADIUS = 16;
@@ -553,7 +554,9 @@ function setupBeachLighting(scene) {
   const sun = new THREE.DirectionalLight(0xfff6dc, 1.3);
   sun.position.set(20, 25, 12);
   sun.castShadow = true;
-  sun.shadow.mapSize.set(1024, 1024);
+  sun.shadow.mapSize.set(2048, 2048);
+  sun.shadow.bias = -0.0004;
+  sun.shadow.normalBias = 0.04;
   sun.shadow.camera.left = -20;
   sun.shadow.camera.right = 20;
   sun.shadow.camera.top = 20;
@@ -566,7 +569,7 @@ function setupBeachLighting(scene) {
 export const beachEnvironment = {
   id: "beach",
   label: "Pulau Pantai",
-  create(scene) {
+  create(scene, renderer) {
     const skyTop = 0x8fd8ff;
     const sky = createSky();
     sky.material.uniforms.topColor.value.set(skyTop);
@@ -579,6 +582,7 @@ export const beachEnvironment = {
     scene.background = new THREE.Color(fogColor);
 
     const { hemi, sun } = setupBeachLighting(scene);
+    const skyLight = createSkyLighting({ renderer, scene, sky, intensity: 0.6 });
 
     const sand = createSandIsland(sun.position, fogColor, fogDensity);
     scene.add(sand.mesh);
@@ -684,6 +688,7 @@ export const beachEnvironment = {
     return {
       update(elapsed, delta) {
         const { intensity } = weather.update(elapsed, delta);
+        skyLight.update(elapsed);
         sand.update(elapsed);
         ocean.update(elapsed);
         birds.update(elapsed);
@@ -705,6 +710,7 @@ export const beachEnvironment = {
         return Math.hypot(x, z) < islandR - 0.8; // berhenti sebelum garis pantai
       },
       dispose() {
+        skyLight.dispose();
         scene.remove(
           sky,
           sand.mesh,

@@ -109,93 +109,24 @@ Bebas digunakan dan dikembangkan untuk keperluan belajar maupun portofolio priba
 <p align="center">Dibangun langkah demi langkah sebagai proyek belajar C++ & Vue.js 🚀</p>
 
 
-map camp improvement list
 
-📊 VISUAL UPGRADE PRIORITY LIST (Genshin Impact Style)
-TIER 1: CRITICAL (Highest Impact, Doable Performance)
-🎨 Advanced Lighting & Shading
+-forest update
+  [DONE]new geografis
+  -add tree
+  -add campfire
+  -add windmill
+  -pohon
+  -lantern buat malam
+  -layered grass
+  -river
+  -random creature (bisa interaksi) / chicken
 
-✅ Implement PBR (Physically Based Rendering) materials
-✅ Add multiple point lights (fireflies, campfire, lanterns)
-✅ Real-time shadows dengan shadowMapSize: 1024 (balanced)
-✅ Screen-space ambient occlusion (SSAO) - lite version
-Impact: +80% visual quality, ~5-10% perf cost
-Why: Genshin punya lighting yang sophisticated tapi clean
-🌄 Atmospheric Post-Processing
+-ada jam indicator
+ forest: siang malam
+ beach: cerah hujan
 
-✅ Bloom effect (bright clouds, light sources)
-✅ Tone mapping (color grading seperti Genshin)
-✅ Slight chromatic aberration
-✅ Depth of field (optional, toggle-able)
-Impact: +70% visual polish, ~3-7% perf cost
-Why: Ini yang buat Genshin terlihat "anime-like" dan dreamy
-🌳 Terrain & Nature Details
-
-✅ Normal maps untuk grass & stones (lebih bumpy)
-✅ Parallax mapping untuk relief
-✅ Layered grass shader dengan wind animation
-✅ Better flower/tree density management
-Impact: +60% realism, ~4-8% perf cost
-Why: Terrain di Genshin punya depth dan movement
-📦 Model Quality & LOD System
-
-✅ Import higher-poly models untuk rak buku & decorations
-✅ Implement LOD (Level of Detail) - auto switch ke low-poly jauh
-✅ Better UV mapping & textures pada existing models
-Impact: +50% visual detail near camera, ~2-5% perf cost
-Why: Detail quality tinggi saat dekat, otomatis optimize jauh
-
-
-✨ Particle Effects
-
-✅ Fireflies/glowbugs yang lebih sophisticated
-✅ Water ripple particles
-✅ Dust motes di udara (volumetric dust)
-✅ Ambient "glow" particles around elements
-Impact: +40% atmosphere, ~3-6% perf cost
-Why: Genshin pakai particles untuk storytelling & ambiance
-🌊 Water Rendering
-
-✅ Improved water shader dengan normal maps
-✅ Reflections (planar or cube map)
-✅ Caustics animation (bayangan di bawah air)
-✅ Wave animation yang realistic
-Impact: +50% pada scenes dengan water, ~4-8% perf cost
-Why: Sungai/danau di Genshin punya detail tinggi
-☁️ Sky & Cloud Improvements
-
-✅ Procedural cloud generation
-✅ Cloud shadows yang bergerak
-✅ Time-of-day color transitions
-✅ Atmospheric perspective (fog distance-based)
-Impact: +35% sky realism, ~2-4% perf cost
-Why: Sky di Genshin berubah-ubah indah
-🏠 Building/Furniture Details
-
-✅ Detailed wooden textures dengan roughness variation
-✅ Cloth/fabric textures di banner/flag
-✅ Rust/weathering effects
-Impact: +45% on object close-ups, ~2% perf cost
-Why: Detail textur buat immersion
-
-🎬 Post-Processing Filters
-
-✅ Color grading LUT (Look-Up Table) untuk mood
-✅ Vignette effect subtle
-✅ Film grain (optional)
-Impact: +25% mood & polish, <1% perf cost
-📐 Anti-Aliasing Upgrade
-
-✅ FXAA atau SMAA (temporal AA kalau bisa)
-Impact: +10% smoothness, <1% perf cost
-🌟 UI Polish
-
-✅ Glow effects di UI elements
-✅ Smooth animations & transitions
-✅ Better fonts & typography
-Impact: +30% UI appeal, 0% perf cost (UI only)
-📍 Interactive Elements
-
-✅ Hover/interact feedback dengan glow
-✅ Sound design polish
-Impact: +20% interactivity feel, <1% perf cost
+-better clouds and sky
+  Procedural cloud generation
+  Cloud shadows yang bergerak
+  Time-of-day color transitions
+  Atmospheric perspective (fog distance-based)

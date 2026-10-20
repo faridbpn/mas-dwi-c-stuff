@@ -91,17 +91,11 @@ function ridgeNoise(x, y) {
 }
 
 function createJaggedMountain({
-  baseRadius,
-  height,
-  segments,
-  jaggedness,
-  baseColor,
-  darkColor,
-  snowColor,
-  snowLine,
+  baseRadius, height, segments, jaggedness, noiseScale,
+  baseColor, darkColor, snowColor, snowLine,
 }) {
-  let geometry = new THREE.ConeGeometry(baseRadius, height, segments, 5, false);
-  geometry = geometry.toNonIndexed();
+  let geometry = new THREE.ConeGeometry(baseRadius, height, segments, 14, false);
+  geometry = geometry.toNonIndexed(); // wajib sebelum deformasi manual
 
   const pos = geometry.attributes.position;
   const colors = [];
@@ -110,90 +104,58 @@ function createJaggedMountain({
   const snow = new THREE.Color(snowColor);
 
   for (let i = 0; i < pos.count; i++) {
-    const x = pos.getX(i);
-    const y = pos.getY(i);
-    const z = pos.getZ(i);
+    const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
     const heightT = THREE.MathUtils.clamp((y + height / 2) / height, 0, 1);
 
-    const n = ridgeNoise(x * 0.4, z * 0.4) * jaggedness * heightT;
+    const n = ridgeNoise(x * noiseScale, z * noiseScale) * jaggedness * heightT;
     pos.setX(i, x + n);
     pos.setZ(i, z + n * 0.7);
 
-    let color;
-    if (heightT > snowLine)
-      color = base.clone().lerp(snow, (heightT - snowLine) / (1 - snowLine));
-    else color = dark.clone().lerp(base, heightT / snowLine);
+    const color =
+      heightT > snowLine
+        ? base.clone().lerp(snow, (heightT - snowLine) / (1 - snowLine))
+        : dark.clone().lerp(base, heightT / snowLine);
     colors.push(color.r, color.g, color.b);
   }
 
   geometry.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
   geometry.computeVertexNormals();
 
-  const material = new THREE.MeshStandardMaterial({
-    vertexColors: true,
-    flatShading: true,
-    fog: true,
-  });
-  return new THREE.Mesh(geometry, material);
+  return new THREE.Mesh(
+    geometry,
+    new THREE.MeshStandardMaterial({ vertexColors: true, flatShading: true, fog: true }),
+  );
 }
 
 export function createMountains() {
   const group = new THREE.Group();
 
+  // Semua di luar radius 120. Bola langit radiusnya 300, jadi (radius + lebar dasar) harus < 300.
   const layers = [
-    {
-      count: 10,
-      radiusRange: [42, 58],
-      heightRange: [14, 24],
-      segments: 7,
-      jaggedness: 2.2,
-      baseColor: 0x5b6b52,
-      darkColor: 0x3c4a38,
-      snowColor: 0xf3f6fa,
-      snowLine: 0.72,
-    },
-    {
-      count: 10,
-      radiusRange: [64, 82],
-      heightRange: [16, 26],
-      segments: 6,
-      jaggedness: 1.6,
-      baseColor: 0x7c8a9c,
-      darkColor: 0x5c6a7c,
-      snowColor: 0xf6f8fb,
-      snowLine: 0.68,
-    },
-    {
-      count: 8,
-      radiusRange: [90, 115],
-      heightRange: [18, 28],
-      segments: 5,
-      jaggedness: 1.0,
-      baseColor: 0xaebbcc,
-      darkColor: 0x9aa8bb,
-      snowColor: 0xf7f9fc,
-      snowLine: 0.6,
-    },
+    { count: 9,  radius: [120, 145], height: [38, 62],  widthK: [0.9, 1.2],  segments: 9,
+      base: 0x5b6b52, dark: 0x3c4a38, snowLine: 0.78 },
+    { count: 10, radius: [160, 185], height: [55, 85],  widthK: [0.85, 1.1], segments: 8,
+      base: 0x7c8a9c, dark: 0x5c6a7c, snowLine: 0.7 },
+    { count: 9,  radius: [205, 225], height: [65, 100], widthK: [0.6, 0.75], segments: 7,
+      base: 0xaebbcc, dark: 0x9aa8bb, snowLine: 0.6 },
   ];
 
   layers.forEach((layer) => {
     for (let i = 0; i < layer.count; i++) {
-      const angle = (i / layer.count) * Math.PI * 2 + Math.random() * 0.25;
-      const radius = THREE.MathUtils.randFloat(...layer.radiusRange);
-      const height = THREE.MathUtils.randFloat(...layer.heightRange);
-      const baseRadius = height * (0.55 + Math.random() * 0.25);
+      const angle = (i / layer.count) * Math.PI * 2 + (Math.random() - 0.5) * 0.3;
+      const radius = THREE.MathUtils.randFloat(...layer.radius);
+      const height = THREE.MathUtils.randFloat(...layer.height);
+      const baseRadius = height * THREE.MathUtils.randFloat(...layer.widthK);
 
       const mountain = createJaggedMountain({
-        baseRadius,
-        height,
-        segments: layer.segments,
-        jaggedness: layer.jaggedness,
-        baseColor: layer.baseColor,
-        darkColor: layer.darkColor,
-        snowColor: layer.snowColor,
-        snowLine: layer.snowLine,
+        baseRadius, height, segments: layer.segments,
+        jaggedness: height * 0.12, noiseScale: 0.12,
+        baseColor: layer.base, darkColor: layer.dark,
+        snowColor: 0xf3f6fa, snowLine: layer.snowLine,
       });
-      mountain.position.set(Math.cos(angle) * radius, height / 2 - 3, Math.sin(angle) * radius);
+      mountain.rotation.y = Math.random() * Math.PI * 2;
+      // dasar ditenggelamkan 10 unit biar gak ada celah dengan tanah
+      mountain.position.set(Math.cos(angle) * radius, height / 2 - 10, Math.sin(angle) * radius);
       group.add(mountain);
     }
   });
@@ -212,7 +174,9 @@ export function setupOutdoorLighting(scene, renderer) {
   const sun = new THREE.DirectionalLight(0xfff1d6, 1.1);
   sun.position.set(15, 20, 10);
   sun.castShadow = true;
-  sun.shadow.mapSize.set(1024, 1024);
+  sun.shadow.mapSize.set(2048, 2048);
+  sun.shadow.bias = -0.0004;
+  sun.shadow.normalBias = 0.04;
   sun.shadow.camera.left = -20;
   sun.shadow.camera.right = 20;
   sun.shadow.camera.top = 20;

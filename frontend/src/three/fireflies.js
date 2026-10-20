@@ -25,7 +25,7 @@ const FRAGMENT_SHADER = `
     }
 `;
 
-export function createFireflies(count = 45) {
+export function createFireflies(count = 45, heightSampler = null) {
     const geometry = new THREE.BufferGeometry();
     const positions = new Float32Array(count * 3);
     const phases = new Float32Array(count);
@@ -37,7 +37,7 @@ export function createFireflies(count = 45) {
         const radius = 3 + Math.random() * 16;
         const x = Math.cos(angle) * radius;
         const z = Math.sin(angle) * radius;
-        const y = 0.4 + Math.random() * 1.8;
+        const y = (heightSampler ? heightSampler(x, z) : 0) + 0.4 + Math.random() * 1.8;
 
         positions[i * 3] = x;
         positions[i * 3 + 1] = y;

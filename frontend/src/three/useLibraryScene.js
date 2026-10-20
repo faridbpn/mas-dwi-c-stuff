@@ -12,6 +12,16 @@ import { applyHighlightState } from "./bookHighlight";
 import { ENVIRONMENTS, DEFAULT_ENVIRONMENT } from "./environments/registry";
 import { createFirstPersonController } from "./firstPersonController";
 
+// Enable shadows untuk object 3D (cast & receive)
+function enableShadows(object) {
+  object?.traverse((child) => {
+    if (!child.isMesh) return;
+    if (child.material?.isMeshBasicMaterial) return; // skip highlights
+    child.castShadow = true;
+    child.receiveShadow = true;
+  });
+}
+
 export function useLibraryScene({
   onMoveBook,
   onRequestDelete,
@@ -47,12 +57,6 @@ export function useLibraryScene({
   let frameCount = 0;
   const clock = new THREE.Clock();
 
-  function buildEnvironment(id) {
-    currentEnvironment?.dispose?.();
-    const def = ENVIRONMENTS[id] ?? ENVIRONMENTS[DEFAULT_ENVIRONMENT];
-    currentEnvironment = def.create(scene, renderer);
-  }
-
   function init(el) {
     container = el;
     scene = new THREE.Scene();
@@ -66,15 +70,23 @@ export function useLibraryScene({
     );
     camera.position.set(0, 3.2, 7);
 
-    renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer = new THREE.WebGLRenderer({
+      antialias: true,
+      powerPreference: "high-performance",
+    });
     renderer.setSize(container.clientWidth, container.clientHeight);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.05;
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     container.appendChild(renderer.domElement);
 
     controls = new OrbitControls(camera, renderer.domElement);
     controls.target.set(0, 0.8, 0);
     controls.enableDamping = true;
     controls.maxPolarAngle = Math.PI / 2.05;
+    controls.maxDistance = 70;
 
     buildEnvironment(environmentId);
 
@@ -91,6 +103,9 @@ export function useLibraryScene({
     dashboardBoard = createDashboardBoardMesh();
     scene.add(dashboardBoard);
     dashboardBoard.userData.baseY = dashboardBoard.position.y;
+
+    // Enable shadows untuk semua objects
+    [...shelfGroups, trashGroup, dashboardBoard].forEach(enableShadows);
 
     fp = createFirstPersonController({
       camera,
@@ -112,6 +127,7 @@ export function useLibraryScene({
     })
       .then((model) => {
         decorModel = model;
+        enableShadows(model);
         scene.add(model);
       })
       .catch((err) => console.warn("Model dekorasi gagal dimuat:", err));
@@ -127,6 +143,12 @@ export function useLibraryScene({
     window.addEventListener("resize", onResize);
 
     animate();
+  }
+
+  function buildEnvironment(id) {
+    currentEnvironment?.dispose?.();
+    const def = ENVIRONMENTS[id] ?? ENVIRONMENTS[DEFAULT_ENVIRONMENT];
+    currentEnvironment = def.create(scene, renderer);
   }
 
   function onWheel() {
@@ -161,7 +183,8 @@ export function useLibraryScene({
       // - Klik KIRI di area kosong = mulai ngelook dengan mouse
       // - Klik KANAN di area kosong = juga mulai ngelook
       // - WASD + Arrow keys = gerak pemain
-      if (event.button === 0 || event.button === 2) { // 0 = left, 2 = right
+      if (event.button === 0 || event.button === 2) {
+        // 0 = left, 2 = right
         fp.beginLook(event);
         renderer.domElement.setPointerCapture?.(event.pointerId);
       }

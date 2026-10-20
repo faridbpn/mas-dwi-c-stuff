@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { createWoodMaterial, createMetalMaterial } from "./materials";
 
 export const SHELF_CONFIG = [
   { status: "mau_dibaca", label: "Mau Dibaca", x: -3.4 },
@@ -13,7 +14,7 @@ const WOOD_COLOR = 0x8a5a3b;
 
 export function createShelfMesh(config) {
   const group = new THREE.Group();
-  const woodMaterial = new THREE.MeshStandardMaterial({ color: WOOD_COLOR });
+  const woodMaterial = createWoodMaterial();
 
   const back = new THREE.Mesh(
     new THREE.BoxGeometry(SHELF_WIDTH, SHELF_HEIGHT, 0.05),
@@ -65,7 +66,7 @@ export function createShelfMesh(config) {
 
 export function createTrashMesh() {
   const group = new THREE.Group();
-  const bodyMaterial = new THREE.MeshStandardMaterial({ color: 0x3a3a3c });
+  const bodyMaterial = createMetalMaterial(0x3a3a3c);
   const body = new THREE.Mesh(
     new THREE.CylinderGeometry(0.35, 0.28, 0.6, 16),
     bodyMaterial,
