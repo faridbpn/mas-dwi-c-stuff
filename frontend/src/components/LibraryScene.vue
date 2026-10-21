@@ -6,39 +6,32 @@
       class="shelf-empty-label"
       :style="{ left: label.x + 'px', top: label.y + 'px' }"
     >
-      <span class="bounce-arrow">👇</span>\
+      <span class="bounce-arrow">👇</span>
       <p>Rak "{{ label.label }}" masih kosong,<br />yuk drag buku ke sini 👋</p>
     </div>
-
-    <DashboardBoard
-      v-if="boardAnchor.inFront"
-      :books="books"
-      class="dashboard-anchor"
-      :style="{ left: boardAnchor.x + 'px', top: boardAnchor.y + 'px' }"
-    />
   </div>
 </template>
 
 <script setup>
 import { ref, computed, onMounted, onBeforeUnmount, watch } from "vue";
 import { useLibraryScene } from "../three/useLibraryScene";
-import DashboardBoard from "./DashboardBoard.vue";
 
 const props = defineProps({
   books: { type: Array, required: true },
   matchedIds: { type: Set, default: () => new Set() },
   hasActiveFilter: { type: Boolean, default: false },
   environmentId: { type: String, default: "forest" },
+  walkMode: { type: Boolean, default: false },
+  inputLocked: { type: Boolean, default: false },
 });
 const emit = defineEmits(["edit-book", "move-book", "request-delete"]);
 
 const containerRef = ref(null);
 const shelfLabels = ref([]);
-const boardAnchor = ref({ x: 0, y: 0, inFront: false });
 let scene;
 
 const emptyShelfLabels = computed(() =>
-  shelfLabels.value.filter((l) => l.count === 0),
+  shelfLabels.value.filter((l) => l.count === 0 && l.inFront),
 );
 
 onMounted(() => {
@@ -49,14 +42,14 @@ onMounted(() => {
     onShelfLabelsUpdate: (positions) => {
       shelfLabels.value = positions;
     },
-    onBoardAnchorUpdate: (anchor) => {
-      boardAnchor.value = anchor;
-    },
+    onBoardAnchorUpdate: null,
     environmentId: props.environmentId,
   });
   scene.init(containerRef.value);
   scene.layoutBooks(props.books);
   scene.updateHighlight(props.matchedIds, props.hasActiveFilter);
+  scene.setInputLocked(props.inputLocked);
+  scene.setWalkMode(props.walkMode);
 });
 
 watch(
@@ -64,6 +57,7 @@ watch(
   (b) => scene?.layoutBooks(b),
   { deep: true },
 );
+
 watch(
   [() => props.matchedIds, () => props.hasActiveFilter],
   ([ids, active]) => {
@@ -71,9 +65,19 @@ watch(
   },
 );
 
+watch(
+  () => props.walkMode,
+  (on) => scene?.setWalkMode(on),
+);
+
+watch(
+  () => props.inputLocked,
+  (v) => scene?.setInputLocked(v),
+);
+
 onBeforeUnmount(() => scene?.destroy());
 defineExpose({
-  switchEnvironment: (id) => scene?.switchEnvironment(id), // BARU
+  switchEnvironment: (id) => scene?.switchEnvironment(id),
 });
 </script>
 
@@ -83,6 +87,7 @@ defineExpose({
   width: 100%;
   height: 100vh;
 }
+
 .shelf-empty-label {
   position: absolute;
   transform: translate(-50%, -100%);
@@ -92,11 +97,13 @@ defineExpose({
   font-size: 0.8rem;
   line-height: 1.4;
 }
+
 .bounce-arrow {
   display: inline-block;
   font-size: 1.4rem;
   animation: bounce 1.2s ease-in-out infinite;
 }
+
 @keyframes bounce {
   0%,
   100% {
@@ -105,10 +112,5 @@ defineExpose({
   50% {
     transform: translateY(6px);
   }
-}
-.dashboard-anchor {
-  position: absolute;
-  transform: translate(-50%, -50%);
-  pointer-events: auto;
 }
 </style>

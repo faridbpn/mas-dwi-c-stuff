@@ -10,6 +10,17 @@ import {
 import { loadDecorModel } from "./statue";
 import { applyHighlightState } from "./bookHighlight";
 import { ENVIRONMENTS, DEFAULT_ENVIRONMENT } from "./environments/registry";
+import { createFirstPersonController } from "./firstPersonController";
+
+// Enable shadows untuk object 3D (cast & receive)
+function enableShadows(object) {
+  object?.traverse((child) => {
+    if (!child.isMesh) return;
+    if (child.material?.isMeshBasicMaterial) return; // skip highlights
+    child.castShadow = true;
+    child.receiveShadow = true;
+  });
+}
 
 export function useLibraryScene({
   onMoveBook,
@@ -17,18 +28,23 @@ export function useLibraryScene({
   onEditBook,
   onShelfLabelsUpdate,
   onBoardAnchorUpdate,
-  environmentId = DEFAULT_ENVIRONMENT, // BARU
+  environmentId = DEFAULT_ENVIRONMENT,
 }) {
   let renderer, scene, camera, controls, raycaster, pointer;
   let animationId = null;
   let container = null;
   let dashboardBoard = null;
 
+  let fp = null;
+  let decorModel = null;
+  const GRAB_REACH = 8;
+  const MAX_DRAG_REACH = 7;
+
   const bookMeshes = new Map();
   const shelfGroups = [];
   let trashGroup = null;
   const shelfCounts = {};
-  let currentEnvironment = null; // BARU
+  let currentEnvironment = null;
   let highlightMatchedIds = new Set();
   let highlightActive = false;
 
@@ -40,13 +56,6 @@ export function useLibraryScene({
   const shards = [];
   let frameCount = 0;
   const clock = new THREE.Clock();
-
-  // BARU: 1 pintu buat bikin/ganti environment
-  function buildEnvironment(id) {
-    currentEnvironment?.dispose?.();
-    const def = ENVIRONMENTS[id] ?? ENVIRONMENTS[DEFAULT_ENVIRONMENT];
-    currentEnvironment = def.create(scene, renderer);
-  }
 
   function init(el) {
     container = el;
@@ -61,18 +70,24 @@ export function useLibraryScene({
     );
     camera.position.set(0, 3.2, 7);
 
-    renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer = new THREE.WebGLRenderer({
+      antialias: true,
+      powerPreference: "high-performance",
+    });
     renderer.setSize(container.clientWidth, container.clientHeight);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.05;
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     container.appendChild(renderer.domElement);
 
     controls = new OrbitControls(camera, renderer.domElement);
     controls.target.set(0, 0.8, 0);
     controls.enableDamping = true;
     controls.maxPolarAngle = Math.PI / 2.05;
+    controls.maxDistance = 70;
 
-    // BARU: sky, fog, lighting, terrain, mountains, dayNight, fireflies,
-    // birds, grass, leaves semuanya sekarang diurus environment
     buildEnvironment(environmentId);
 
     SHELF_CONFIG.forEach((cfg) => {
@@ -89,13 +104,32 @@ export function useLibraryScene({
     scene.add(dashboardBoard);
     dashboardBoard.userData.baseY = dashboardBoard.position.y;
 
+    // Enable shadows untuk semua objects
+    [...shelfGroups, trashGroup, dashboardBoard].forEach(enableShadows);
+
+    fp = createFirstPersonController({
+      camera,
+      controls,
+      getEnvironment: () => currentEnvironment,
+      getObstacleObjects: () => [
+        ...shelfGroups,
+        trashGroup,
+        dashboardBoard,
+        decorModel,
+      ],
+    });
+
     loadDecorModel({
       url: "/models/bronze_shark_statue_1k.gltf",
       targetHeight: 1.6,
       position: [5.6, 0, 5.4],
       rotationY: -Math.PI / 2,
     })
-      .then((model) => scene.add(model))
+      .then((model) => {
+        decorModel = model;
+        enableShadows(model);
+        scene.add(model);
+      })
       .catch((err) => console.warn("Model dekorasi gagal dimuat:", err));
 
     dragPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -0.5);
@@ -109,6 +143,12 @@ export function useLibraryScene({
     window.addEventListener("resize", onResize);
 
     animate();
+  }
+
+  function buildEnvironment(id) {
+    currentEnvironment?.dispose?.();
+    const def = ENVIRONMENTS[id] ?? ENVIRONMENTS[DEFAULT_ENVIRONMENT];
+    currentEnvironment = def.create(scene, renderer);
   }
 
   function onWheel() {
@@ -125,7 +165,131 @@ export function useLibraryScene({
     raycaster.setFromCamera(pointer, camera);
     const meshes = [...bookMeshes.values()];
     const hits = raycaster.intersectObjects(meshes);
-    return hits.length ? hits[0].object : null;
+    if (!hits.length) return null;
+    if (fp.isEnabled() && hits[0].distance > GRAB_REACH) return null;
+    return hits[0].object;
+  }
+
+  function onPointerDown(event) {
+    lastInteractionAt = performance.now();
+    updatePointer(event);
+    pointerDownPos = { x: event.clientX, y: event.clientY };
+    const hit = getIntersectedBook();
+    if (hit) {
+      draggingMesh = hit;
+      controls.enabled = false;
+    } else if (fp.isEnabled()) {
+      // KONTROL KAMERA:
+      // - Klik KIRI di area kosong = mulai ngelook dengan mouse
+      // - Klik KANAN di area kosong = juga mulai ngelook
+      // - WASD + Arrow keys = gerak pemain
+      if (event.button === 0 || event.button === 2) {
+        // 0 = left, 2 = right
+        fp.beginLook(event);
+        renderer.domElement.setPointerCapture?.(event.pointerId);
+      }
+    }
+  }
+
+  function onPointerMove(event) {
+    lastInteractionAt = performance.now();
+
+    if (fp.isLooking()) {
+      fp.look(event);
+      return;
+    }
+
+    updatePointer(event);
+
+    if (draggingMesh) {
+      raycaster.setFromCamera(pointer, camera);
+      const point = new THREE.Vector3();
+      const hitPoint = raycaster.ray.intersectPlane(dragPlane, point);
+
+      if (hitPoint) {
+        if (fp.isEnabled()) {
+          const dx = point.x - camera.position.x;
+          const dz = point.z - camera.position.z;
+          const d = Math.hypot(dx, dz);
+          if (d > MAX_DRAG_REACH) {
+            const s = MAX_DRAG_REACH / d;
+            point.x = camera.position.x + dx * s;
+            point.z = camera.position.z + dz * s;
+          }
+        }
+        draggingMesh.position.x = point.x;
+        draggingMesh.position.z = point.z;
+        draggingMesh.position.y = 0.55;
+      }
+
+      shelfGroups.forEach((s) => {
+        const isNear =
+          Math.abs(draggingMesh.position.x - s.position.x) < 1.3 &&
+          s.userData.status !== draggingMesh.userData.status;
+        s.userData.highlightMesh.visible = isNear;
+      });
+
+      const distToTrash = draggingMesh.position.distanceTo(trashGroup.position);
+      const isNearTrash = distToTrash < 1.4;
+      const targetScale = isNearTrash ? 1.35 : 1;
+      trashGroup.scale.setScalar(
+        THREE.MathUtils.lerp(trashGroup.scale.x, targetScale, 0.25),
+      );
+      trashGroup.userData.body.material.color.set(
+        isNearTrash
+          ? trashGroup.userData.hoverColor
+          : trashGroup.userData.baseColor,
+      );
+      return;
+    }
+
+    const hit = getIntersectedBook();
+    renderer.domElement.style.cursor = hit ? "pointer" : "grab";
+  }
+
+  function onPointerUp(event) {
+    fp.endLook();
+    controls.enabled = !fp.isEnabled();
+
+    const movedDistance = Math.hypot(
+      event.clientX - pointerDownPos.x,
+      event.clientY - pointerDownPos.y,
+    );
+
+    if (!draggingMesh) {
+      if (movedDistance < 6) {
+        raycaster.setFromCamera(pointer, camera);
+        currentEnvironment?.handleClick?.(raycaster);
+      }
+      return;
+    }
+
+    clearDragFeedback();
+
+    const mesh = draggingMesh;
+    draggingMesh = null;
+
+    if (movedDistance < 6) {
+      onEditBook(mesh.userData.bookId);
+      layoutBooks([...bookMeshes.values()].map((m) => m.userData));
+      return;
+    }
+
+    const distToTrash = mesh.position.distanceTo(trashGroup.position);
+    if (distToTrash < 1) {
+      shatterBook(mesh);
+      onRequestDelete(mesh.userData.bookId);
+      return;
+    }
+
+    const targetShelf = shelfGroups.find(
+      (s) => Math.abs(mesh.position.x - s.position.x) < 1.3,
+    );
+    if (targetShelf && targetShelf.userData.status !== mesh.userData.status) {
+      onMoveBook(mesh.userData.bookId, targetShelf.userData.status);
+    } else {
+      layoutBooks([...bookMeshes.values()].map((m) => m.userData));
+    }
   }
 
   function clearDragFeedback() {
@@ -157,16 +321,19 @@ export function useLibraryScene({
     const delta = clock.getDelta();
     const elapsed = clock.getElapsedTime();
 
-    // BARU: 1 baris ngurusin semua animasi environment
     currentEnvironment?.update(elapsed, delta);
 
     updateShards(delta);
     updateIdleMotion(elapsed);
 
-    const idleFor = performance.now() - lastInteractionAt;
-    controls.autoRotate = idleFor > IDLE_THRESHOLD_MS && !draggingMesh;
-    controls.autoRotateSpeed = 0.4;
-    controls.update();
+    if (fp.isEnabled()) {
+      fp.update(delta);
+    } else {
+      const idleFor = performance.now() - lastInteractionAt;
+      controls.autoRotate = idleFor > IDLE_THRESHOLD_MS && !draggingMesh;
+      controls.autoRotateSpeed = 0.4;
+      controls.update();
+    }
 
     renderer.render(scene, camera);
 
@@ -207,102 +374,6 @@ export function useLibraryScene({
 
     if (trashGroup) {
       trashGroup.rotation.y = Math.sin(elapsed * 0.4) * 0.05;
-    }
-  }
-
-  function onPointerDown(event) {
-    lastInteractionAt = performance.now();
-    updatePointer(event);
-    pointerDownPos = { x: event.clientX, y: event.clientY };
-    const hit = getIntersectedBook();
-    if (hit) {
-      draggingMesh = hit;
-      controls.enabled = false;
-    }
-  }
-
-  function onPointerMove(event) {
-    lastInteractionAt = performance.now();
-    updatePointer(event);
-
-    if (draggingMesh) {
-      raycaster.setFromCamera(pointer, camera);
-      const point = new THREE.Vector3();
-      raycaster.ray.intersectPlane(dragPlane, point);
-      if (point) {
-        draggingMesh.position.x = point.x;
-        draggingMesh.position.z = point.z;
-        draggingMesh.position.y = 0.55;
-      }
-
-      shelfGroups.forEach((s) => {
-        const isNear =
-          Math.abs(draggingMesh.position.x - s.position.x) < 1.3 &&
-          s.userData.status !== draggingMesh.userData.status;
-        s.userData.highlightMesh.visible = isNear;
-      });
-
-      const distToTrash = draggingMesh.position.distanceTo(trashGroup.position);
-      const isNearTrash = distToTrash < 1.4;
-      const targetScale = isNearTrash ? 1.35 : 1;
-      trashGroup.scale.setScalar(
-        THREE.MathUtils.lerp(trashGroup.scale.x, targetScale, 0.25),
-      );
-      trashGroup.userData.body.material.color.set(
-        isNearTrash
-          ? trashGroup.userData.hoverColor
-          : trashGroup.userData.baseColor,
-      );
-      return;
-    }
-
-    const hit = getIntersectedBook();
-    renderer.domElement.style.cursor = hit ? "pointer" : "grab";
-  }
-
-  function onPointerUp(event) {
-    controls.enabled = true;
-
-    const movedDistance = Math.hypot(
-      event.clientX - pointerDownPos.x,
-      event.clientY - pointerDownPos.y,
-    );
-
-    // BARU: klik tanpa narik buku -> coba serahkan ke environment
-    // (misal klik kepiting di beach), gak perlu draggingMesh buat ini
-    if (!draggingMesh) {
-      if (movedDistance < 6) {
-        raycaster.setFromCamera(pointer, camera);
-        currentEnvironment?.handleClick?.(raycaster);
-      }
-      return;
-    }
-
-    clearDragFeedback();
-
-    const mesh = draggingMesh;
-    draggingMesh = null;
-
-    if (movedDistance < 6) {
-      onEditBook(mesh.userData.bookId);
-      layoutBooks([...bookMeshes.values()].map((m) => m.userData));
-      return;
-    }
-
-    const distToTrash = mesh.position.distanceTo(trashGroup.position);
-    if (distToTrash < 1) {
-      shatterBook(mesh);
-      onRequestDelete(mesh.userData.bookId);
-      return;
-    }
-
-    const targetShelf = shelfGroups.find(
-      (s) => Math.abs(mesh.position.x - s.position.x) < 1.3,
-    );
-    if (targetShelf && targetShelf.userData.status !== mesh.userData.status) {
-      onMoveBook(mesh.userData.bookId, targetShelf.userData.status);
-    } else {
-      layoutBooks([...bookMeshes.values()].map((m) => m.userData));
     }
   }
 
@@ -391,10 +462,19 @@ export function useLibraryScene({
     applyHighlightToAll();
   }
 
-  // BARU: dipake fitur map-selection nanti
   function switchEnvironment(id) {
-    if (!scene) return; // belum init
+    if (!scene) return;
     buildEnvironment(id);
+    if (fp?.isEnabled()) fp.respawn();
+  }
+
+  function setWalkMode(on) {
+    if (on) fp.enable();
+    else fp.disable();
+  }
+
+  function setInputLocked(v) {
+    fp?.setInputLocked(v);
   }
 
   function onResize() {
@@ -413,10 +493,19 @@ export function useLibraryScene({
     renderer.domElement.removeEventListener("pointerup", onPointerUp);
     currentEnvironment?.dispose?.();
     currentEnvironment = null;
+    fp?.dispose();
     bookMeshes.forEach(disposeBookMesh);
     renderer.dispose();
     container?.removeChild(renderer.domElement);
   }
 
-  return { init, layoutBooks, updateHighlight, switchEnvironment, destroy };
+  return {
+    init,
+    layoutBooks,
+    updateHighlight,
+    switchEnvironment,
+    setWalkMode,
+    setInputLocked,
+    destroy,
+  };
 }

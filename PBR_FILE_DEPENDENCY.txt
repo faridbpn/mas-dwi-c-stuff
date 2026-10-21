@@ -1,0 +1,178 @@
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                    PBR IMPLEMENTATION FILE DEPENDENCY                        ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+┌─ CORE RENDERING LAYER ─────────────────────────────────────────────────────┐
+│                                                                              │
+│  useLibraryScene.js  ⭐⭐⭐ CRITICAL                                         │
+│  ├─ Renderer setup (PBR tone mapping)                                      │
+│  ├─ Shadow map configuration                                              │
+│  ├─ Lighting initialization                                               │
+│  └─ Calls all environment creators                                        │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+┌─ ENVIRONMENT LIGHTING ─────────────────────────────────────────────────────┐
+│                                                                              │
+│  /environments/                                                            │
+│  ├─ forest.js  ⭐⭐ HIGH PRIORITY                                          │
+│  │  ├─ Directional Light (sun)                                           │
+│  │  ├─ Point Lights (campfire, lanterns)                                 │
+│  │  ├─ Ambient Light                                                     │
+│  │  └─ HDRI/Environment Map                                              │
+│  │                                                                         │
+│  ├─ beach.js  ⭐⭐ HIGH PRIORITY                                           │
+│  │  ├─ Directional Light (tropical sun)                                  │
+│  │  ├─ Point Lights (torches)                                            │
+│  │  ├─ Ambient Light                                                     │
+│  │  └─ Water HDRI                                                        │
+│  │                                                                         │
+│  └─ registry.js  ⭐ MEDIUM PRIORITY                                        │
+│     └─ Export light configurations                                        │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+┌─ MATERIAL DEFINITIONS ─────────────────────────────────────────────────────┐
+│                                                                              │
+│  shelfFactory.js  ⭐⭐ HIGH PRIORITY                                        │
+│  ├─ Wood material (MeshStandardMaterial)                                  │
+│  │  ├─ color: wood brown                                                 │
+│  │  ├─ map: wood texture                                                │
+│  │  ├─ normalMap: wood detail ← NEW                                     │
+│  │  ├─ roughness: 0.7-0.8                                              │
+│  │  ├─ roughnessMap: wood variation ← NEW                              │
+│  │  └─ aoMap: crevice shadows ← NEW                                    │
+│  │                                                                       │
+│  ├─ Trash bin material                                                 │
+│  │  └─ metalness: 0.8, roughness: 0.3                                 │
+│  │                                                                       │
+│  └─ [Used in] createShelfMesh() → scene                                │
+│                                                                              │
+│  bookFactory.js  ⭐⭐ HIGH PRIORITY                                        │
+│  ├─ Side material (book edge color)                                    │
+│  │  └─ MeshStandardMaterial with status color                          │
+│  │                                                                       │
+│  ├─ Spine material (book cover)                                        │
+│  │  ├─ map: canvas texture (title, author)                           │
+│  │  ├─ normalMap: texture relief ← NEW                                │
+│  │  ├─ metalness: 0.1-0.2 (gilt effect)                              │
+│  │  ├─ roughness: 0.4-0.6                                            │
+│  │  └─ envMapIntensity: 0.5 ← NEW                                    │
+│  │                                                                       │
+│  └─ [Used in] createBookMesh() → scene                                │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+┌─ DECORATIVE OBJECTS ─────────────────────────────────────────────────────┐
+│                                                                            │
+│  ⭐ MEDIUM PRIORITY (add roughness/normal maps)                          │
+│  ├─ grass.js                                                            │
+│  │  └─ Material: grass shader with normal map                          │
+│  │                                                                       │
+│  ├─ rocks.js                                                           │
+│  │  └─ Material: stone with normal + roughness map                    │
+│  │                                                                       │
+│  ├─ palmTrees.js                                                       │
+│  │  ├─ Bark: wood-like material                                       │
+│  │  └─ Leaves: foliage material                                       │
+│  │                                                                       │
+│  ├─ fireflies.js                                                       │
+│  │  └─ Point lights emission                                          │
+│  │                                                                       │
+│  └─ Imported models (kraken.js, crabs.js, statue.js)                  │
+│     └─ Adjust imported material properties                            │
+│                                                                            │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+┌─ TEXTURE ASSETS ─────────────────────────────────────────────────────────┐
+│                                                                            │
+│  /public/textures/  ← NEW FOLDER                                        │
+│  ├─ wood/                                                              │
+│  │  ├─ shelf_albedo.jpg        (Color)                               │
+│  │  ├─ shelf_normal.jpg        (Surface detail)                     │
+│  │  ├─ shelf_roughness.jpg     (Shininess variation)                │
+│  │  └─ shelf_ao.jpg            (Shadow in crevices)                 │
+│  │                                                                    │
+│  ├─ rock/                                                            │
+│  │  ├─ stone_albedo.jpg                                             │
+│  │  ├─ stone_normal.jpg                                             │
+│  │  └─ stone_roughness.jpg                                          │
+│  │                                                                    │
+│  ├─ grass/                                                           │
+│  │  ├─ grass_normal.jpg                                             │
+│  │  └─ grass_roughness.jpg                                          │
+│  │                                                                    │
+│  ├─ book/                                                            │
+│  │  ├─ cover_normal.jpg        (Paper texture)                     │
+│  │  └─ gilding.jpg             (Gold leaf shimmer)                 │
+│  │                                                                    │
+│  ├─ environment/                                                     │
+│  │  ├─ forest_hdri.hdr         (Background + reflections)          │
+│  │  └─ beach_hdri.hdr          (Tropical environment)              │
+│  │                                                                    │
+│  └─ metal/                                                           │
+│     ├─ steel_albedo.jpg                                             │
+│     ├─ steel_normal.jpg                                             │
+│     ├─ steel_metalness.jpg                                          │
+│     └─ steel_roughness.jpg                                          │
+│                                                                            │
+│  Size target: ~3-5MB (compressed WebP/KTX2)                          │
+│                                                                            │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+┌─ OPTIONAL: CUSTOM SHADERS ─────────────────────────────────────────────┐
+│                                                                          │
+│  /src/three/shaders/  ← OPTIONAL (Advanced)                           │
+│  ├─ woodShader.js      (Procedural wood grain)                        │
+│  ├─ waterShader.js     (Wave + caustics animation)                   │
+│  ├─ grassShader.js     (Wind-driven grass bending)                   │
+│  └─ metaShader.js      (Advanced metallic reflections)               │
+│                                                                          │
+│  Impact: +10-20% visual, -5-10% perf                                  │
+│  Priority: AFTER core PBR implementation                              │
+│                                                                          │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                         DATA FLOW DURING RENDERING                          ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+Renderer (PBR-enabled)
+    ↓
+Lighting (sun + point + HDRI)
+    ↓
+Material Properties (roughness, metalness, normal maps)
+    ↓
+Texture Sampling (from /public/textures/)
+    ↓
+Surface Calculation (PBR formula)
+    ↓
+Fragment shader output (final color)
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                         IMPLEMENTATION ORDER                                 ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+STEP 1: Setup Renderer (useLibraryScene.js)
+   └─ Add tone mapping, shadow maps
+   Time: 1 hour | Perf: +2%
+
+STEP 2: Add Lighting (forest.js, beach.js)
+   └─ Directional + point lights
+   Time: 2 hours | Perf: +3-4%
+
+STEP 3: Update Materials (shelfFactory.js, bookFactory.js)
+   └─ Add metalness/roughness
+   Time: 2 hours | Perf: +1-2%
+
+STEP 4: Add Texture Maps (NEW folder + material updates)
+   └─ Normal maps, roughness maps
+   Time: 3-4 hours | Perf: +2-3% (loading)
+
+STEP 5: Polish Decoratives (grass, rocks, etc.)
+   └─ Apply PBR to minor objects
+   Time: 2 hours | Perf: +1-2%
+
+TOTAL TIME: 10-12 hours
+TOTAL PERF COST: ~8-12% (acceptable trade-off!)
+

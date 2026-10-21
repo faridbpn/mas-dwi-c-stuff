@@ -110,27 +110,23 @@ Bebas digunakan dan dikembangkan untuk keperluan belajar maupun portofolio priba
 
 
 
+-forest update
+  [DONE]new geografis
+  -add tree
+  -add campfire
+  -add windmill
+  -pohon
+  -lantern buat malam
+  -layered grass
+  -river
+  -random creature (bisa interaksi) / chicken
 
+-ada jam indicator
+ forest: siang malam
+ beach: cerah hujan
 
-
-Confetti pas selesai baca (#9) — effort kecil, reward psikologis instan.
-
-
-
-[]Sound effect kontekstual — "thud" pelan pas buku nempel ke rak, "crash" pas kena sampah (nyambung ke shatter animation yang udah ada), "swoosh" pas kamera auto-orbit mulai jalan. Audio pendek (<1 detik), sama kayak BGM tapi instance Audio terpisah yang di-play() sesuai event, bukan loop.
-
-[]Highlight buku yang match hasil search — daripada buku yang gak cocok search-nya "ilang" total dari rak (perilaku sekarang), alternatifnya: buku yang gak match diredupin/transparan, yang match tetep solid + glow tipis. Kesannya lebih "browsing perpustakaan", bukan filter keras.
-
-better graphics
-
-[done]new map pantai
-
-[done]switch map
-
-[]3d object yang bisa interaksi
-kepiting di map beach
-domba di gunung
-
-[done]kraken ester egg map pantai
-
-[done]awan realistis gerak
+-better clouds and sky
+  Procedural cloud generation
+  Cloud shadows yang bergerak
+  Time-of-day color transitions
+  Atmospheric perspective (fog distance-based)

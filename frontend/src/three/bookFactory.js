@@ -61,10 +61,11 @@ function drawSpineCanvas(book, coverImage) {
 
 function buildMaterials(book, coverImage) {
   const color = STATUS_COLOR[book.status] ?? 0x999999;
-  const sideMaterial = new THREE.MeshStandardMaterial({ color });
+  const sideMaterial = new THREE.MeshStandardMaterial({ color, roughness: 0.85, metalness: 0 });
   const texture = new THREE.CanvasTexture(drawSpineCanvas(book, coverImage));
+  texture.colorSpace = THREE.SRGBColorSpace; // BARU
   texture.needsUpdate = true;
-  const spineMaterial = new THREE.MeshStandardMaterial({ map: texture });
+  const spineMaterial = new THREE.MeshStandardMaterial({ map: texture, roughness: 0.55, metalness: 0.05 });
   return [sideMaterial, sideMaterial, sideMaterial, sideMaterial, spineMaterial, sideMaterial];
 }
 
@@ -78,6 +79,7 @@ export function createBookMesh(book) {
   mesh.userData.bookId = book.id;
   mesh.userData.status = book.status;
   mesh.castShadow = true;
+  mesh.receiveShadow = true;
 
    // BARU: fase & kecepatan acak, biar goyangnya gak seragam/robotik
   mesh.userData.idleSeed = Math.random() * Math.PI * 2;

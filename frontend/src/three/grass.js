@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { hillHeight } from "./environment";
+import { heightAtWorld, slopeAtWorld } from "./forestTerrain";
 
 const VERTEX_SHADER = `
   uniform float uTime;
@@ -67,7 +67,8 @@ export function createGrass(count = 2500) {
 
     // catatan konversi koordinat: tanah dirotasi -90° di sumbu X, jadi
     // world Z = -(local Y) yang dipakai hillHeight -> makanya di-minus di sini
-    const y = hillHeight(x, -z);
+    const y = heightAtWorld(x, z);
+    if (y < -0.45 || slopeAtWorld(x, z) > 0.45) continue; // skip dasar sungai & tebing
 
     dummy.position.set(x, y, z);
     dummy.rotation.y = Math.random() * Math.PI * 2;
