@@ -72,7 +72,7 @@ export function createDayNightCycle({ scene, sky, sun, hemi, cycleDurationSecond
     hemi.groundColor.copy(lerpColor(a.hemi.ground, b.hemi.ground, localT));
     hemi.intensity = THREE.MathUtils.lerp(a.hemi.intensity, b.hemi.intensity, localT);
 
-    return { t, isNight: elevationDeg < 0 }; // `isNight` disiapin buat fitur kunang-kunang nanti
+    return { t, isNight: elevationDeg < 0, elevationDeg }; // `isNight` disiapin buat fitur kunang-kunang nanti
   }
 
   return { update };

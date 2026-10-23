@@ -204,8 +204,6 @@ const EMBER_FRAGMENT = `
   }
 `;
 
-// sampe sini
-
 /**
  * @param {number} count            jumlah api unggun
  * @param {function} heightSampler  (x, z) => tinggi tanah

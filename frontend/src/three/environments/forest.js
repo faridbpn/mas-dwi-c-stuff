@@ -5,6 +5,7 @@ import { createBirdFlock } from "../birds";
 import { createFallingLeaves } from "../leaves";
 import { createGrass } from "../grass";
 import { createSkyLighting } from "../skyLighting";
+import { createCampfires } from "../campfire";
 import {
   createSky,
   createMountains,
@@ -67,6 +68,17 @@ export const forestEnvironment = {
     //    jadi `.meshes` (array), ganti baris ini jadi:
     //    leaves.meshes.forEach((m) => scene.add(m));
 
+    const campfires = createCampfires({
+      count: 4,
+      heightSampler: heightAtWorld,
+      isValidSpot: (x, z, dist) =>
+        dist > 13 && dist < 42 &&
+        slopeAtWorld(x, z) < 0.22 &&          // tanah rata
+        heightAtWorld(x, z) > -0.3 &&         // bukan lembah sungai
+        riverDistanceWorld(x, z) > 6,
+    });
+    scene.add(campfires.group);
+
     const trees = createTreeSystem({
       modelUrls: ["/models/tree/scene.gltf"], // GANTI sesuai path asetmu
       count: 90,
@@ -77,12 +89,15 @@ export const forestEnvironment = {
         dist < 52 && // di dalam area terrain
         slopeAtWorld(x, z) < 0.4 && // jangan di tebing
         heightAtWorld(x, z) > -0.4 && // jangan di lembah sungai
-        riverDistanceWorld(x, z) > 7,
+        riverDistanceWorld(x, z) > 7 &&
+        campfires.spots.every((s) => Math.hypot(s.x - x, s.z - z) > 3.5), // hindari api unggun
     });
     scene.add(trees.group);
+
     return {
       update(elapsed, delta) {
-        const { isNight } = dayNightCycle.update(elapsed);
+        const { isNight, elevationDeg } = dayNightCycle.update(elapsed);
+        const night = 1 - THREE.MathUtils.smoothstep(elevationDeg, -8, 20);
         skyLight.update(elapsed);
         fireflies.update(elapsed);
         birds.update(elapsed);
@@ -90,6 +105,7 @@ export const forestEnvironment = {
         birds.group.visible = !isNight;
         grass.update(elapsed);
         leaves.update(elapsed, delta);
+        campfires.update(elapsed, delta, night);
       },
       getGroundHeight: heightAtWorld,
       isWalkable: isWalkableWorld,
@@ -99,6 +115,8 @@ export const forestEnvironment = {
         terrain.material.dispose();
         farGround.geometry.dispose();
         farGround.material.dispose();
+        trees.dispose();
+        campfires.dispose();
         scene.remove(
           sky,
           terrain,
@@ -109,6 +127,8 @@ export const forestEnvironment = {
           birds.group,
           grass.mesh,
           leaves.mesh,
+          trees.group,
+          campfires.group
         );
         scene.fog = null;
       },
