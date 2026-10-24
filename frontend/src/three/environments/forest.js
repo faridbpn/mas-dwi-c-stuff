@@ -6,6 +6,7 @@ import { createFallingLeaves } from "../leaves";
 import { createGrass } from "../grass";
 import { createSkyLighting } from "../skyLighting";
 import { createCampfires } from "../campfire";
+import { createRiver } from "../river";
 import {
   createSky,
   createMountains,
@@ -33,6 +34,9 @@ export const forestEnvironment = {
     scene.background = new THREE.Color(0xbcdcff);
     const farGround = createFarGround();
     scene.add(farGround);
+
+    const river = createRiver({ heightSampler: heightAtWorld });
+    scene.add(river.mesh);
 
     const { hemi, sun } = setupOutdoorLighting(scene, renderer);
     const skyLight = createSkyLighting({
@@ -72,9 +76,10 @@ export const forestEnvironment = {
       count: 4,
       heightSampler: heightAtWorld,
       isValidSpot: (x, z, dist) =>
-        dist > 13 && dist < 42 &&
-        slopeAtWorld(x, z) < 0.22 &&          // tanah rata
-        heightAtWorld(x, z) > -0.3 &&         // bukan lembah sungai
+        dist > 13 &&
+        dist < 42 &&
+        slopeAtWorld(x, z) < 0.22 && // tanah rata
+        heightAtWorld(x, z) > -0.3 && // bukan lembah sungai
         riverDistanceWorld(x, z) > 6,
     });
     scene.add(campfires.group);
@@ -106,6 +111,7 @@ export const forestEnvironment = {
         grass.update(elapsed);
         leaves.update(elapsed, delta);
         campfires.update(elapsed, delta, night);
+        river.update(elapsed, { sun, sky, daylight: 1 - night });
       },
       getGroundHeight: heightAtWorld,
       isWalkable: isWalkableWorld,
@@ -117,6 +123,7 @@ export const forestEnvironment = {
         farGround.material.dispose();
         trees.dispose();
         campfires.dispose();
+        river.dispose();
         scene.remove(
           sky,
           terrain,
@@ -128,7 +135,8 @@ export const forestEnvironment = {
           grass.mesh,
           leaves.mesh,
           trees.group,
-          campfires.group
+          campfires.group,
+          river.mesh,
         );
         scene.fog = null;
       },

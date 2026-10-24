@@ -1,312 +1,240 @@
 import * as THREE from "three";
+import { WATER_Y, riverCenterZ, riverDistanceWorld } from "./forestTerrain";
 
-const PEAK_INTENSITY = 60;   // terang maksimum tiap api (malam penuh)
-const LIGHT_DISTANCE = 24;   // jangkauan cahaya
-const EMBERS_PER_FIRE = 10;
+const VERTEX = `
+  uniform float uTime;
+  attribute float aDepth;
+  attribute vec2 aFlow;
+  varying vec3 vWorld;
+  varying float vDepth;
+  varying vec2 vFlow;
+  #include <fog_pars_vertex>
 
-const rand = (a, b) => a + Math.random() * (b - a);
-
-// 0..1, berdenyut tidak beraturan (3 gelombang beda frekuensi)
-function flicker(t, seed) {
-  return (
-    0.5 +
-    0.25 * Math.sin(t * 9 + seed) +
-    0.15 * Math.sin(t * 17.3 + seed * 2.1) +
-    0.1 * Math.sin(t * 31 + seed * 0.7)
-  );
-}
-
-// ---------- tekstur (dibuat sekali, dipakai semua api) ----------
-let flameTexture = null;
-let glowTexture = null;
-
-function getFlameTexture() {
-  if (flameTexture) return flameTexture;
-  const W = 128, H = 256;
-  const c = document.createElement("canvas");
-  c.width = W;
-  c.height = H;
-  const ctx = c.getContext("2d");
-
-  // 8 lapis tetesan yang mengecil -> tepi lembut, dasar lebih pekat
-  for (let i = 0; i < 8; i++) {
-    const s = 1 - i * 0.1;
-    ctx.save();
-    ctx.translate(W / 2, H - 4);
-    ctx.scale(s, s);
-    ctx.translate(-W / 2, -(H - 4));
-    ctx.beginPath();
-    ctx.moveTo(64, 6);
-    ctx.bezierCurveTo(100, 90, 124, 160, 64, 252);
-    ctx.bezierCurveTo(4, 160, 28, 90, 64, 6);
-    ctx.fillStyle = "rgba(255,255,255,0.17)";
-    ctx.fill();
-    ctx.restore();
-  }
-  flameTexture = new THREE.CanvasTexture(c);
-  return flameTexture;
-}
-
-function getGlowTexture() {
-  if (glowTexture) return glowTexture;
-  const c = document.createElement("canvas");
-  c.width = c.height = 128;
-  const ctx = c.getContext("2d");
-  const g = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
-  g.addColorStop(0, "rgba(255,255,255,1)");
-  g.addColorStop(0.4, "rgba(255,255,255,0.35)");
-  g.addColorStop(1, "rgba(255,255,255,0)");
-  ctx.fillStyle = g;
-  ctx.fillRect(0, 0, 128, 128);
-  glowTexture = new THREE.CanvasTexture(c);
-  return glowTexture;
-}
-
-// ---------- penempatan ----------
-function pickSpots(count, { heightSampler, isValidSpot, area, minSpacing, nearRange }) {
-  const spots = [];
-  let tries = 0;
-  while (spots.length < count && tries < 800) {
-    tries++;
-    const first = spots.length === 0;
-    // api pertama dipaksa dekat & ke arah kamera awal (kamera di +z menghadap -z)
-    const dist = first ? rand(...nearRange) : rand(nearRange[0], area / 2);
-    const ang = first ? -Math.PI / 2 + rand(-1.1, 1.1) : Math.random() * Math.PI * 2;
-    const x = Math.cos(ang) * dist;
-    const z = Math.sin(ang) * dist;
-    if (!isValidSpot(x, z, dist)) continue;
-    if (spots.some((s) => Math.hypot(s.x - x, s.z - z) < minSpacing)) continue;
-    spots.push({ x, z, y: heightSampler(x, z) });
-  }
-  return spots;
-}
-
-// ---------- 1 api unggun ----------
-function buildFire(spot) {
-  const root = new THREE.Group();
-  root.position.set(spot.x, spot.y, spot.z);
-  root.scale.setScalar(rand(0.9, 1.2));
-
-  // abu di tengah
-  const ash = new THREE.Mesh(
-    new THREE.CircleGeometry(0.75, 20),
-    new THREE.MeshStandardMaterial({ color: 0x2a2420, roughness: 1 }),
-  );
-  ash.rotation.x = -Math.PI / 2;
-  ash.position.y = 0.03;
-  root.add(ash);
-
-  // lingkaran batu
-  const stoneMat = new THREE.MeshStandardMaterial({ color: 0x77706a, roughness: 1, flatShading: true });
-  for (let i = 0; i < 8; i++) {
-    const a = (i / 8) * Math.PI * 2 + rand(-0.15, 0.15);
-    const stone = new THREE.Mesh(new THREE.DodecahedronGeometry(rand(0.16, 0.24), 0), stoneMat);
-    stone.scale.y = 0.7;
-    stone.position.set(Math.cos(a) * 0.88, 0.1, Math.sin(a) * 0.88);
-    stone.rotation.set(rand(0, 3), rand(0, 3), rand(0, 3));
-    root.add(stone);
-  }
-
-  // kayu bakar bersandar ke tengah
-  const logMat = new THREE.MeshStandardMaterial({ color: 0x4b3222, roughness: 1 });
-  for (let i = 0; i < 5; i++) {
-    const pivot = new THREE.Group();
-    pivot.rotation.y = (i / 5) * Math.PI * 2 + rand(-0.2, 0.2);
-    const log = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.09, 1.05, 7), logMat);
-    log.position.set(0.3, 0.45, 0);
-    log.rotation.z = 0.55; // puncak miring ke pusat
-    pivot.add(log);
-    root.add(pivot);
-  }
-
-  // lapisan api: luar (merah), tengah (oranye), inti (kuning)
-  const layers = [
-    { color: 0xff4a10, w: 0.95, h: 1.7, n: 2, spread: 0.12 },
-    { color: 0xff9020, w: 0.7, h: 1.3, n: 2, spread: 0.08 },
-    { color: 0xffe08a, w: 0.4, h: 0.8, n: 1, spread: 0 },
-  ];
-  const sprites = [];
-  layers.forEach((layer) => {
-    for (let k = 0; k < layer.n; k++) {
-      const mat = new THREE.SpriteMaterial({
-        map: getFlameTexture(),
-        color: layer.color,
-        transparent: true,
-        blending: THREE.AdditiveBlending,
-        depthWrite: false,
-        fog: false,
-      });
-      const sprite = new THREE.Sprite(mat);
-      sprite.center.set(0.5, 0.05); // porosnya di dasar api
-      const baseX = layer.n > 1 ? (k - 0.5) * 2 * layer.spread : 0;
-      sprite.position.set(baseX, 0.2, 0);
-      sprite.scale.set(layer.w, layer.h, 1);
-      sprite.userData = {
-        baseW: layer.w,
-        baseH: layer.h,
-        baseX,
-        seed: rand(0, 100),
-        speed: rand(0.9, 1.3),
-      };
-      root.add(sprite);
-      sprites.push(sprite);
-    }
-  });
-
-  // bercak cahaya di tanah
-  const glow = new THREE.Mesh(
-    new THREE.PlaneGeometry(9, 9),
-    new THREE.MeshBasicMaterial({
-      map: getGlowTexture(),
-      color: 0xff8a3a,
-      transparent: true,
-      opacity: 0,
-      blending: THREE.AdditiveBlending,
-      depthWrite: false,
-      fog: false,
-      polygonOffset: true,
-      polygonOffsetFactor: -2,
-    }),
-  );
-  glow.rotation.x = -Math.PI / 2;
-  glow.position.y = 0.08;
-  root.add(glow);
-
-  // lampu: SELALU ada di scene (intensitas 0 di siang), jangan di-toggle .visible
-  const light = new THREE.PointLight(0xff8a3d, 0, LIGHT_DISTANCE, 2);
-  light.position.set(0, 1.0, 0);
-  root.add(light);
-
-  return { root, spot, sprites, glow, light, seed: rand(0, 100) };
-}
-
-const EMBER_VERTEX = `
-  attribute float aLife;
-  attribute float aSize;
-  varying float vLife;
   void main() {
-    vLife = aLife;
-    vec4 mv = modelViewMatrix * vec4(position, 1.0);
-    gl_PointSize = aSize * (1.0 - aLife * 0.6) * (120.0 / -mv.z);
-    gl_Position = projectionMatrix * mv;
+    vDepth = aDepth;
+    vFlow = aFlow;
+    vec3 pos = position;
+    // gelombang kecil di bagian dalam, mati di tepi supaya garis air stabil
+    float amp = smoothstep(0.0, 0.3, aDepth);
+    pos.y += sin(dot(position.xz, vec2(1.3, 0.9)) - uTime * 1.6) * 0.012 * amp;
+    vWorld = pos; // mesh di origin, posisi lokal = posisi dunia
+    vec4 mvPosition = viewMatrix * vec4(pos, 1.0);
+    gl_Position = projectionMatrix * mvPosition;
+    #include <fog_vertex>
   }
 `;
 
-const EMBER_FRAGMENT = `
-  uniform float uStrength;
-  varying float vLife;
+const FRAGMENT = `
+  uniform float uTime;
+  uniform float uDaylight;
+  uniform float uSunStrength;
+  uniform vec3 uSunDir;
+  uniform vec3 uSunColor;
+  uniform vec3 uSkyTop;
+  uniform vec3 uSkyHorizon;
+  uniform vec3 uShallow;
+  uniform vec3 uDeep;
+  varying vec3 vWorld;
+  varying float vDepth;
+  varying vec2 vFlow;
+  #include <fog_pars_fragment>
+
+  float hash(vec2 p) {
+    p = fract(p * vec2(123.34, 456.21));
+    p += dot(p, p + 45.32);
+    return fract(p.x * p.y);
+  }
+  float vnoise(vec2 p) {
+    vec2 i = floor(p), f = fract(p);
+    f = f * f * (3.0 - 2.0 * f);
+    return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), f.x),
+               mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x), f.y);
+  }
+  float hfun(vec2 q) {
+    return vnoise(q) * 0.55 + vnoise(q * 2.1 + 7.3) * 0.3 + vnoise(q * 4.3 - 3.1) * 0.15;
+  }
+
+  // gradien riak untuk 1 fase; pola dipanjangkan searah arus
+  vec2 layerGrad(float a, float b, float ph, float spd) {
+    vec2 q = vec2((a - ph * 3.0 * spd) * 0.6, b * 1.5);
+    float e = 0.07;
+    float gx = hfun(q + vec2(e, 0.0)) - hfun(q - vec2(e, 0.0));
+    float gy = hfun(q + vec2(0.0, e)) - hfun(q - vec2(0.0, e));
+    return vec2(gx * 0.6, gy * 1.5) / (2.0 * e);
+  }
+
+  vec3 waterNormal(vec2 p, vec2 flow) {
+    float spd = length(flow);
+    vec2 d = flow / max(spd, 1e-4);
+    vec2 pd = vec2(-d.y, d.x);
+    float a = dot(p, d), b = dot(p, pd);
+    // flow-map: 2 fase bergeser setengah siklus, saling memudar saat salah satunya "reset"
+    float r0 = fract(uTime * 0.35);
+    float r1 = fract(uTime * 0.35 + 0.5);
+    float w0 = 1.0 - abs(2.0 * r0 - 1.0);
+    vec2 g = w0 * layerGrad(a, b, r0, spd) + (1.0 - w0) * layerGrad(a, b, r1, spd);
+    vec2 gw = g.x * d + g.y * pd;
+    return normalize(vec3(-gw.x * 0.35, 1.0, -gw.y * 0.35));
+  }
+
+  float foamPattern(vec2 p, vec2 flow) {
+    float spd = length(flow);
+    vec2 d = flow / max(spd, 1e-4);
+    vec2 pd = vec2(-d.y, d.x);
+    float a = dot(p, d), b = dot(p, pd);
+    float r0 = fract(uTime * 0.35);
+    float r1 = fract(uTime * 0.35 + 0.5);
+    float w0 = 1.0 - abs(2.0 * r0 - 1.0);
+    float n0 = vnoise(vec2((a - r0 * 3.0 * spd) * 1.3, b * 3.2));
+    float n1 = vnoise(vec2((a - r1 * 3.0 * spd) * 1.3, b * 3.2));
+    return mix(n1, n0, w0);
+  }
+
   void main() {
-    float d = length(gl_PointCoord - vec2(0.5));
-    if (d > 0.5) discard;
-    float glow = smoothstep(0.5, 0.0, d);
-    vec3 col = mix(vec3(1.0, 0.75, 0.25), vec3(1.0, 0.25, 0.05), vLife);
-    gl_FragColor = vec4(col, glow * (1.0 - vLife) * uStrength);
+    vec3 V = normalize(cameraPosition - vWorld);
+    vec3 L = normalize(uSunDir);
+    float dist = length(cameraPosition - vWorld);
+
+    vec3 N = waterNormal(vWorld.xz, vFlow);
+    N = normalize(mix(N, vec3(0.0, 1.0, 0.0), smoothstep(40.0, 120.0, dist))); // jauh: halus, anti-aliasing
+
+    float depth = vDepth;
+    float clarity = exp(-depth * 2.2); // 1 = dangkal & bening
+
+    vec3 col = mix(uDeep, uShallow, clarity);
+    col *= 0.9 + 0.2 * hfun(vWorld.xz * 0.2); // variasi warna skala besar
+    float light = mix(0.14, 1.0, uDaylight);
+    col *= light * mix(vec3(0.55, 0.65, 1.0), vec3(1.0), uDaylight);
+
+    float NdotV = max(dot(N, V), 0.0);
+    float fres = 0.02 + 0.98 * pow(1.0 - NdotV, 5.0);
+    vec3 R = reflect(-V, N);
+    vec3 sky = mix(uSkyHorizon, uSkyTop, pow(clamp(R.y, 0.0, 1.0), 0.5));
+    col = mix(col, sky, clamp(fres * 0.9 + 0.04, 0.0, 1.0));
+
+    vec3 H = normalize(L + V);
+    float NdotH = max(dot(N, H), 0.0);
+    col += uSunColor * (pow(NdotH, 220.0) * 1.6 + pow(NdotH, 40.0) * 0.12) * uSunStrength;
+
+    // buih di tepian
+    float shore = 1.0 - smoothstep(0.0, 0.2, depth);
+    float fp = foamPattern(vWorld.xz, vFlow);
+    float foam = clamp(shore * smoothstep(0.35, 0.75, fp) * 1.4 + shore * 0.15, 0.0, 1.0);
+    col = mix(col, vec3(0.95, 0.98, 1.0) * mix(0.2, 1.0, uDaylight), foam);
+
+    float alpha = mix(0.5, 0.95, 1.0 - clarity);
+    alpha = clamp(alpha + fres * 0.25, 0.0, 1.0);
+    alpha = max(alpha, foam);
+    alpha *= smoothstep(0.0, 0.06, depth); // tepi menyatu halus dengan tanah
+
+    gl_FragColor = vec4(col, alpha);
+    #include <fog_fragment>
   }
 `;
 
 /**
- * @param {number} count            jumlah api unggun
- * @param {function} heightSampler  (x, z) => tinggi tanah
- * @param {function} isValidSpot    (x, z, dist) => boolean
+ * @param {function} heightSampler (x, z) => tinggi tanah dunia
  */
-export function createCampfires({
-  count = 4,
+export function createRiver({
   heightSampler,
-  isValidSpot,
-  area = 100,
-  minSpacing = 14,
-  nearRange = [14, 22],
+  length = 120,
+  halfWidth = 11,
+  alongSeg = 240,
+  acrossSeg = 36,
 }) {
-  const group = new THREE.Group();
-  const spots = pickSpots(count, { heightSampler, isValidSpot, area, minSpacing, nearRange });
-  const fires = spots.map(buildFire);
-  fires.forEach((f) => group.add(f.root));
+  const vertCount = (alongSeg + 1) * (acrossSeg + 1);
+  const positions = new Float32Array(vertCount * 3);
+  const depths = new Float32Array(vertCount);
+  const flows = new Float32Array(vertCount * 2);
+  const smooth = THREE.MathUtils.smoothstep;
 
-  // ---------- bara (1 draw call buat semua api) ----------
-  const total = fires.length * EMBERS_PER_FIRE;
-  const positions = new Float32Array(total * 3);
-  const lives = new Float32Array(total);
-  const sizes = new Float32Array(total);
-  const embers = [];
-  fires.forEach((fire) => {
-    for (let k = 0; k < EMBERS_PER_FIRE; k++) {
-      sizes[embers.length] = rand(0.25, 0.5);
-      embers.push({
-        fire,
-        life: Math.random(),
-        rate: rand(0.25, 0.5),
-        ox: rand(-0.25, 0.25),
-        oz: rand(-0.25, 0.25),
-        rise: rand(1.8, 3.4),
-        seed: rand(0, 100),
-      });
+  let n = 0;
+  for (let i = 0; i <= alongSeg; i++) {
+    const x = -length / 2 + (length * i) / alongSeg;
+    const zc = riverCenterZ(x);
+    const slope = (riverCenterZ(x + 0.1) - riverCenterZ(x - 0.1)) / 0.2;
+    const inv = 1 / Math.sqrt(1 + slope * slope);
+    const tx = inv, tz = slope * inv;   // arah aliran (searah +x)
+    const px = -tz, pz = tx;            // tegak lurus aliran
+
+    for (let j = 0; j <= acrossSeg; j++) {
+      const v = (j / acrossSeg) * 2 - 1;
+      const wx = x + px * v * halfWidth;
+      const wz = zc + pz * v * halfWidth;
+
+      const h = heightSampler(wx, wz);
+      const mask = 1 - smooth(riverDistanceWorld(wx, wz), 6.5, 9); // cegah genangan di luar koridor
+      const depth = Math.max(0, WATER_Y - h) * mask;
+
+      const speed = (0.3 + 0.7 * (1 - v * v)) * (0.5 + 0.5 * Math.min(1, depth / 0.8));
+
+      positions.set([wx, WATER_Y, wz], n * 3);
+      depths[n] = depth;
+      flows[n * 2] = tx * speed;
+      flows[n * 2 + 1] = tz * speed;
+      n++;
     }
-  });
+  }
 
-  const emberGeo = new THREE.BufferGeometry();
-  const posAttr = new THREE.BufferAttribute(positions, 3);
-  const lifeAttr = new THREE.BufferAttribute(lives, 1);
-  emberGeo.setAttribute("position", posAttr);
-  emberGeo.setAttribute("aLife", lifeAttr);
-  emberGeo.setAttribute("aSize", new THREE.BufferAttribute(sizes, 1));
+  const indices = [];
+  const row = acrossSeg + 1;
+  for (let i = 0; i < alongSeg; i++) {
+    for (let j = 0; j < acrossSeg; j++) {
+      const a = i * row + j, b = (i + 1) * row + j;
+      const c = a + 1, d = b + 1;
+      indices.push(a, c, b, b, c, d); // menghadap ke atas
+    }
+  }
 
-  const emberMat = new THREE.ShaderMaterial({
-    uniforms: { uStrength: { value: 0.4 } },
-    vertexShader: EMBER_VERTEX,
-    fragmentShader: EMBER_FRAGMENT,
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+  geometry.setAttribute("aDepth", new THREE.BufferAttribute(depths, 1));
+  geometry.setAttribute("aFlow", new THREE.BufferAttribute(flows, 2));
+  geometry.setIndex(indices);
+
+  const uniforms = THREE.UniformsUtils.merge([
+    THREE.UniformsLib.fog,
+    {
+      uTime: { value: 0 },
+      uDaylight: { value: 1 },
+      uSunStrength: { value: 1 },
+      uSunDir: { value: new THREE.Vector3(0, 1, 0) },
+      uSunColor: { value: new THREE.Color(0xfff1d6) },
+      uSkyTop: { value: new THREE.Color(0x6ea8ff) },
+      uSkyHorizon: { value: new THREE.Color(0xeef0f3) },
+      uShallow: { value: new THREE.Color(0x7fd6c8) },
+      uDeep: { value: new THREE.Color(0x1f7f86) },
+    },
+  ]);
+
+  const material = new THREE.ShaderMaterial({
+    uniforms,
+    vertexShader: VERTEX,
+    fragmentShader: FRAGMENT,
     transparent: true,
     depthWrite: false,
-    blending: THREE.AdditiveBlending,
+    fog: true,
+    side: THREE.DoubleSide,
   });
-  const emberPoints = new THREE.Points(emberGeo, emberMat);
-  emberPoints.frustumCulled = false; // posisinya berubah, bounding awal gak akurat
-  group.add(emberPoints);
 
-  /** night: 0 (siang) .. 1 (malam penuh) */
-  function update(elapsed, delta, night = 1) {
-    fires.forEach((fire) => {
-      const f = flicker(elapsed, fire.seed);
+  const mesh = new THREE.Mesh(geometry, material);
+  mesh.renderOrder = -1; // digambar sebelum sprite api/awan, biar gak nimpa mereka
+  mesh.frustumCulled = false;
 
-      fire.sprites.forEach((s) => {
-        const { baseW, baseH, baseX, seed, speed } = s.userData;
-        const sf = flicker(elapsed * speed, seed);
-        s.scale.set(baseW * (0.9 + 0.2 * sf), baseH * (0.78 + 0.45 * sf), 1);
-        s.position.x = baseX + Math.sin(elapsed * 3 + seed) * 0.05;
-        s.material.opacity = (0.7 + 0.3 * sf) * (0.8 + 0.2 * night);
-      });
-
-      fire.light.intensity = PEAK_INTENSITY * night * (0.78 + 0.4 * f);
-      fire.glow.material.opacity = night * 0.55 * (0.8 + 0.4 * f);
-    });
-
-    embers.forEach((e, i) => {
-      e.life += delta * e.rate;
-      if (e.life >= 1) {
-        e.life -= 1;
-        e.ox = rand(-0.25, 0.25);
-        e.oz = rand(-0.25, 0.25);
-      }
-      const p = e.life;
-      const sc = e.fire.root.scale.x;
-      const { x, y, z } = e.fire.spot;
-      positions[i * 3] = x + (e.ox + Math.sin(elapsed * 2.2 + e.seed) * 0.35 * p) * sc;
-      positions[i * 3 + 1] = y + (0.55 + p * e.rise) * sc;
-      positions[i * 3 + 2] = z + (e.oz + Math.cos(elapsed * 1.9 + e.seed) * 0.35 * p) * sc;
-      lives[i] = p;
-    });
-    posAttr.needsUpdate = true;
-    lifeAttr.needsUpdate = true;
-    emberMat.uniforms.uStrength.value = 0.35 + 0.65 * night;
+  function update(elapsed, { sun, sky, daylight }) {
+    uniforms.uTime.value = elapsed;
+    uniforms.uSunDir.value.copy(sun.position).normalize();
+    uniforms.uSunColor.value.copy(sun.color);
+    uniforms.uSkyTop.value.copy(sky.material.uniforms.topColor.value);
+    uniforms.uSkyHorizon.value.copy(sky.material.uniforms.bottomColor.value);
+    uniforms.uDaylight.value = daylight;
+    uniforms.uSunStrength.value = THREE.MathUtils.smoothstep(uniforms.uSunDir.value.y, 0, 0.25);
   }
 
   function dispose() {
-    group.traverse((c) => {
-      c.geometry?.dispose();
-      const mats = Array.isArray(c.material) ? c.material : c.material ? [c.material] : [];
-      mats.forEach((m) => m.dispose());
-    });
-    // flameTexture & glowTexture sengaja gak di-dispose, dipakai ulang kalau map dibuka lagi
+    geometry.dispose();
+    material.dispose();
   }
 
-  return { group, update, spots, dispose };
+  return { mesh, update, dispose };
 }
