@@ -11,6 +11,7 @@ const EDGE_END = 46;
 const CLIFF_EDGE = 1.6; // makin kecil makin tegak tebingnya
 const MAX_WALK_SLOPE = 0.9;
 const MAX_WALK_RADIUS = 34;
+const WADE_DEPTH = 0.45; // batas kedalaman air yang bisa dilalui pemain
 
 const MESAS = [
   { x: 30, z: 6, r: 6, top: 6.5, seed: 1, ramp: true, rampLen: 12 }, // bisa didaki
@@ -67,7 +68,7 @@ function fbm(x, z, octaves = 4) {
 }
 
 // sungai
-function riverCenterZ(x) {
+export function riverCenterZ(x) {
   return -23 + 4.5 * Math.sin(x * 0.11 + 0.8) + 2.0 * Math.sin(x * 0.27 + 2.0);
 }
 
@@ -136,8 +137,10 @@ export function slopeAtWorld(x, z, e = 0.6) {
   return Math.hypot(dx, dz) / (2 * e);
 }
 
+
 export function isWalkableWorld(x, z) {
   if (Math.hypot(x, z) > MAX_WALK_RADIUS) return false;
+  if (riverDistanceWorld(x, z) < 8 && WATER_Y - heightAtWorld(x, z) > WADE_DEPTH) return false;
   return slopeAtWorld(x, z) < MAX_WALK_RADIUS;
 }
 

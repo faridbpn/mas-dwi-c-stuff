@@ -112,14 +112,12 @@ Bebas digunakan dan dikembangkan untuk keperluan belajar maupun portofolio priba
 
 -forest update
   [DONE]new geografis
-  -add tree
-  -add campfire
-  -add windmill
-  -pohon
-  -lantern buat malam
-  -layered grass
-  -river
-  -random creature (bisa interaksi) / chicken
+  [DONE]add tree
+  [DONE]add campfire
+  [DONE]layered grass
+  [DONE]river
+  [otw]random creature (bisa interaksi) / chicken
+  -lantern buat malam [beach]
 
 -ada jam indicator
  forest: siang malam
