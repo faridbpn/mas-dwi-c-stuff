@@ -114,10 +114,10 @@ Bebas digunakan dan dikembangkan untuk keperluan belajar maupun portofolio priba
   [DONE]new geografis
   [DONE]add tree
   [DONE]add campfire
+  [DONE]layered grass
+  [DONE]river
+  [otw]random creature (bisa interaksi) / chicken
   -lantern buat malam [beach]
-  -layered grass
-  -river
-  -random creature (bisa interaksi) / chicken
 
 -ada jam indicator
  forest: siang malam
